@@ -1,36 +1,73 @@
 """
-This does day-ahead prediction of magnetic field properties.
+This is a script for finding the best performing neural network architecture among
+a set of potential architectures. While you can run this script directly from the
+command line, the idea here is to have a Bayesian model select the architecture
+most likely to improve on the past experiences. Through many repeated
+experiments the Bayesian model finds a high-performing network
+and the space weather person is responsible for interpreting the
+best performing network.
 
-This script parameterically determines a set of architectures that will be searched
-over to find the best performance. 
+The network architectures searchable by this script follow
+the form:
+
+INPUT -> [[CONV -> RELU]*N -> POOL?]*M -> [FC -> RELU]*K -> FC
+
+Unpacking this statement, the architecture starts with the inputs, then
+passes through a convolutional layer with a rectified linear unit N times.
+Next the layers are max pooled. The combination of convolutions
+and pooling is repeated M times, before passing through K fully connected
+layers having a rectified linear unit activation. The final layer of the
+nework is a fully connected layer having a single output.
+
+Layer parameters can be specified via the command line.
+Each of the parameters have defaults so you can just start the script and watch it
+train. If you want to specify parameters from the command line, they are specified
+positionally, so to run with the default parameters you would run:
+`python architectures.py 2 2 1 8 1 1 1 2 2 1 4 4 4 1 .3 128`
+
+Before running the script, we recommend you start the tensorboard server so you
+can track the progress.
+
+`tensorboard --logdir=/tmp/sdo_128`
 
 """
 
+#####################################
+#        Importing Modules          #
+#####################################
+
+# Neural network specification
 from keras.layers import Input, Dense, Conv2D, MaxPooling2D, Dropout, Flatten, Activation
 from keras.models import Model
 from keras import backend as K
+
+# Linear algebra library within Python
 import numpy as np
+
+# Deep learning training library
 from keras.callbacks import TensorBoard
+
+# Utilities for this script
 import os
 import random
 import datetime
 import argparse
 import sys
 
+#####################################
+#        Specifying Network         #
+#####################################
+
 """
-Layer parameters can be specified via the command line. This is to allow for searching
-over architectures for the best performing set of pooling and convolutional layers.
+These parameters specify the network architecture and are set from the
+command line either by you (the user) or by a program that is
+searching/optimizing the structure of the architecture.
 
-Each of the parameters have defaults so you can just start the script and watch it
-train. If you want to specify parameters from the command line, they are specified
-positionally, so to run with the default parameters you would run:
-`python architectures.py 2 2 1 8 1 1 1 2 2 1 4 4 4 1 .3 128`
-
-General architecture:
-INPUT -> [[CONV -> RELU]*N -> POOL?]*M -> [FC -> RELU]*K -> FC
+You can change these values from the command line, or you can
+modify the soure code to have hard-coded values. We generally
+recommend you use the command line as stated above.
 """
-
-arguments = [2, 2, 1, 8, 1, 1, 1, 2, 2, 1, 4, 4, 4, 1, .3, 128]
+arguments = [2, 2, 1, 8, 1, 1, 1, 2, 2, 1, 4, 4, 4, 1, .3, 128]  # Defaults
 if len(sys.argv) > 2:
     arguments = sys.argv[1:]
 
@@ -68,10 +105,12 @@ dense_2_count = 1
 dense_2_activation = "linear"
 
 
-"""
-Data sources
-"""
+#####################################
+#         SPECIFYING DATA           #
+#####################################
+
 data_directory = "/home/smcgregor/projects/solar-forecast/datasets/sdo_128/bin/"
+tensorboard_log_data_path = "/tmp/sdo_128"
 seed = 0
 random.seed(seed)
 input_channels = 8
@@ -79,6 +118,10 @@ input_width = 128
 input_height = 128
 input_image = Input(shape=(input_width, input_height, input_channels))
 x = input_image
+
+#####################################
+#     Constructing Architecture     #
+#####################################
 
 if pool_1_width != 1 or pool_1_height != 1 or pool_1_stride != 1:
     input_width = (input_width - pool_1_width)/pool_1_stride + 1
@@ -102,10 +145,17 @@ prediction = Dense(1, activation=dense_2_activation)(x)
 forecaster = Model(input_image, prediction)
 forecaster.compile(optimizer='adadelta', loss='mean_absolute_error')
 
-# Uncomment to plot the network architecture
+"""
+Debugging code:
+  Uncomment to plot the network architecture.
+"""
 #from keras.utils import plot_model
 #plot_model(forecaster, to_file='model3.png', show_shapes=True)
 #exit()
+
+#####################################
+#          LOADING DATA             #
+#####################################
 
 # get a directory listing of the sdo mnist data
 filenames = os.listdir(data_directory)
@@ -173,8 +223,12 @@ x_train, y_train = get_files(train_files)
 x_train = x_train.astype('float32') / 255.
 x_train = np.reshape(x_train, (len(x_train), 128, 128, 8))  # adapt this if using `channels_first` image data format
 
+#####################################
+#    Optimizig the Neural Network   #
+#####################################
+
 forecaster.fit(x_train, (np.asarray([[1]*len(x_train)])).reshape(len(x_train),1),
                epochs=3,
                batch_size=1,
                shuffle=True,
-               callbacks=[TensorBoard(log_dir='/tmp/autoencoder')])
+               callbacks=[TensorBoard(log_dir=tensorboard_log_data_path)])

@@ -21,9 +21,12 @@ nework is a fully connected layer having a single output.
 
 Layer parameters can be specified via the command line.
 Each of the parameters have defaults so you can just start the script and watch it
-train. If you want to specify parameters from the command line, they are specified
-positionally, so to run with the default parameters you would run:
-`python architectures.py 2 2 1 8 1 1 1 2 2 1 4 4 4 1 .3 128`
+train. If you want to specify parameters from the command line, they are specified with
+flags. So to run with the default parameters you would run:
+`python architectures.py -pool_1_width 2 -pool_1_height 2 -pool_1_stride 1 -conv_1_channels 8 -conv_1_width 1 -conv_1_height 1 -conv_1_stride 1 -pool_2_width 2 -pool_2_height 2 -pool_2_stride 1 -conv_2_channels 4 -conv_2_width 4 -conv_2_height 4 -conv_2_stride 1 -dropout_rate .3 -dense_1_count 128``
+
+If you don't specify these parameters at the command line, then the default value
+will be used.
 
 Before running the script, we recommend you start the tensorboard server so you
 can track the progress.
@@ -54,6 +57,14 @@ import datetime
 import argparse
 import sys
 
+# Library for parsing arguments
+import argparse
+
+# Uncomment to force training to take place on the CPU
+#import os
+#os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"   # see issue #152
+#os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
 #####################################
 #        Specifying Network         #
 #####################################
@@ -67,43 +78,45 @@ You can change these values from the command line, or you can
 modify the soure code to have hard-coded values. We generally
 recommend you use the command line as stated above.
 """
-arguments = [2, 2, 1, 8, 1, 1, 1, 2, 2, 1, 4, 4, 4, 1, .3, 128]  # Defaults
-if len(sys.argv) > 2:
-    arguments = sys.argv[1:]
+
+parser = argparse.ArgumentParser(description='Train a neural network.')
+
+parser.add_argument('ignore', metavar='N', type=str, nargs='*',
+                    help='ignore this argument. It is used to accumulate positional arguments from SMAC')
 
 # Set all pooling parameters to 1 to skip pooling layer
-pool_1_width = int(arguments[0])  # [1,*2*,4,8,16,32,64,128]
-pool_1_height = int(arguments[1])  # [*1*,2,4,8,16,32,64,128]
-pool_1_stride = int(arguments[2]) # [*1*,2,4]
+parser.add_argument('-pool_1_width', type=int, nargs="?", default=2)
+parser.add_argument('-pool_1_height', type=int, nargs="?", default=2)
+parser.add_argument('-pool_1_stride', type=int, nargs="?", default=1)
 
 # Set conv_1_channels to 0 to not include this layer
-conv_1_channels = int(arguments[3])  # [0,1,2,3,4,5,6,7,*8*]
-conv_1_width = int(arguments[4])  # [*1*,2,3,4,5,6,7]
-conv_1_height = int(arguments[5])  # [*1*,2,3,4,5,6,7]
-conv_1_stride = int(arguments[6])  # [*1*,2,4]
+parser.add_argument('-conv_1_channels', type=int, nargs="?", default=8)
+parser.add_argument('-conv_1_width', type=int, nargs="?", default=1)
+parser.add_argument('-conv_1_height', type=int, nargs="?", default=1)
+parser.add_argument('-conv_1_stride', type=int, nargs="?", default=1)
 conv_1_activation = "relu" # Not available initially
 
 # Set all pooling parameters to 1 to skip pooling layer
-pool_2_width = int(arguments[7])  # [1,*2*,4,8,16,32,64,128]
-pool_2_height = int(arguments[8])  # [1,*2*,4,8,16,32,64,128]
-pool_2_stride = int(arguments[9]) # [*1*,2,4]
+parser.add_argument('-pool_2_width', type=int, nargs="?", default=2)
+parser.add_argument('-pool_2_height', type=int, nargs="?", default=2)
+parser.add_argument('-pool_2_stride', type=int, nargs="?", default=1)
 
 # Set conv_2_channels to 0 to not include this layer
-conv_2_channels = int(arguments[10])  # [1,2,3,*4*,5,6,7,8]
-conv_2_width = int(arguments[11])  # [1,2,3,*4*,5,6,7]
-conv_2_height = int(arguments[12])  # [1,2,3,*4*,5,6,7]
-conv_2_stride = int(arguments[13])  # [*1*,2,4]
+parser.add_argument('-conv_2_channels', type=int, nargs="?", default=4)
+parser.add_argument('-conv_2_width', type=int, nargs="?", default=4)
+parser.add_argument('-conv_2_height', type=int, nargs="?", default=4)
+parser.add_argument('-conv_2_stride', type=int, nargs="?", default=1)
 conv_2_activation = "relu" # Not available initially
 
-dropout_rate = float(arguments[14])  # [0,.1,.2,*.3*,.4,.5,.6,.7]
-
-dense_1_count = int(arguments[15])  # [4,8,16,32,64,*128*,256]
+parser.add_argument('-dropout_rate', type=float, nargs="?", default=.3)
+parser.add_argument('-dense_1_count', type=int, nargs="?", default=128)
 dense_1_activation = "relu" # Not available for search initially
 
 # Final output for regression
 dense_2_count = 1
 dense_2_activation = "linear"
 
+args = parser.parse_args()
 
 #####################################
 #         SPECIFYING DATA           #
@@ -123,23 +136,21 @@ x = input_image
 #     Constructing Architecture     #
 #####################################
 
-if pool_1_width != 1 or pool_1_height != 1 or pool_1_stride != 1:
-    input_width = (input_width - pool_1_width)/pool_1_stride + 1
-    input_height = (input_height - pool_1_height)/pool_1_stride + 1
-    x = MaxPooling2D((pool_1_width, pool_1_height), padding='same', strides=pool_1_stride)(x)
+if args.pool_1_width != 1 or args.pool_1_height != 1 or args.pool_1_stride != 1:
+    x = MaxPooling2D((args.pool_1_width, args.pool_1_height), padding='same', strides=args.pool_1_stride)(x)
 
-if conv_1_channels is not 0:
-    x = Conv2D(conv_1_channels, (conv_1_width, conv_1_height), activation=conv_1_activation, padding='same')(x)
+if args.conv_1_channels is not 0:
+    x = Conv2D(args.conv_1_channels, (args.conv_1_width, args.conv_1_height), activation=conv_1_activation, padding='same')(x)
 
-if pool_2_width != 1 or pool_2_height != 1 or pool_2_stride != 1:
-    x = MaxPooling2D((pool_2_width, pool_2_height), padding='same', strides=pool_2_stride)(x)
+if args.pool_2_width != 1 or args.pool_2_height != 1 or args.pool_2_stride != 1:
+    x = MaxPooling2D((args.pool_2_width, args.pool_2_height), padding='same', strides=args.pool_2_stride)(x)
 
-if conv_2_channels is not 0:
-    x = Conv2D(conv_2_channels, (conv_2_width, conv_2_height), activation=conv_2_activation, padding='same')(x)
+if args.conv_2_channels is not 0:
+    x = Conv2D(args.conv_2_channels, (args.conv_2_width, args.conv_2_height), activation=conv_2_activation, padding='same')(x)
     
 x = Flatten()(x)
-x = Dropout(dropout_rate)(x)
-x = Dense(dense_1_count, activation=dense_1_activation)(x)
+x = Dropout(args.dropout_rate)(x)
+x = Dense(args.dense_1_count, activation=dense_1_activation)(x)
 prediction = Dense(1, activation=dense_2_activation)(x)
 
 forecaster = Model(input_image, prediction)
@@ -157,13 +168,9 @@ Debugging code:
 #          LOADING DATA             #
 #####################################
 
-# get a directory listing of the sdo mnist data
+# get a directory listing of the sdo data
 filenames = os.listdir(data_directory)
-
-# remove a random subset of the file name list and make them the test set
-random.shuffle(filenames)
-train_files = filenames[:-10]
-test_files = filenames[-10:]
+train_files = filenames[:]
 
 def sdo_summary(filename):
     """
@@ -219,16 +226,32 @@ def get_files(paths):
 
 # pack the x_train from the train set
 x_train, y_train = get_files(train_files)
-    
+
+# Rescale, todo: do better
 x_train = x_train.astype('float32') / 255.
-x_train = np.reshape(x_train, (len(x_train), 128, 128, 8))  # adapt this if using `channels_first` image data format
+x_train = np.reshape(x_train, (len(x_train), 128, 128, 8))
 
 #####################################
-#    Optimizig the Neural Network   #
+#   Optimizing the Neural Network   #
 #####################################
 
-forecaster.fit(x_train, (np.asarray([[1]*len(x_train)])).reshape(len(x_train),1),
-               epochs=3,
-               batch_size=1,
-               shuffle=True,
-               callbacks=[TensorBoard(log_dir=tensorboard_log_data_path)])
+validation_split = 0.05
+if len(x_train) > 1000:
+    validation_split = 1000./len(x_train)
+
+history = forecaster.fit(x_train, (np.asarray([[1]*len(x_train)])).reshape(len(x_train),1),
+                         epochs=3,
+                         validation_split=validation_split,
+                         batch_size=100,
+                         shuffle=True,
+                         callbacks=[TensorBoard(log_dir=tensorboard_log_data_path)])
+
+# Loss on the training set
+print history.history['loss']
+
+# Loss on the validation set
+if 'val_loss' in history.history.keys():
+    print history.history['val_loss']
+
+# Print the performance of the network for the SMAC algorithm
+print "Result for SMAC: SUCCESS, 0, 0, %f, 0" % history.history['loss'][-1]

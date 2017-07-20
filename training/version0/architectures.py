@@ -166,7 +166,7 @@ print forecaster.summary()
 # Do not allow a configuration with more than 150 million parameters
 if forecaster.count_params() > 150000000:
     print "exiting since this network architecture will contain too many paramters"
-    print "Result for SMAC: FAILURE, 0, 0, 999999999, 0"
+    print "Result for SMAC: SUCCESS, 0, 0, 999999999, 0" #  todo: figure out the failure string within SMAC
     exit()
 
 """

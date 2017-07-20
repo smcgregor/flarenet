@@ -123,7 +123,7 @@ args = parser.parse_args()
 #####################################
 
 data_directory = "/data/sw/version0/AIA_171/"
-tensorboard_log_data_path = "/tmp/version0"
+tensorboard_log_data_path = "/tmp/version0/"
 seed = 0
 random.seed(seed)
 input_channels = 1
@@ -132,6 +132,7 @@ input_height = 4096
 maximum_y_value = 0.00054361000000000004
 y_reweight = 1839.55409209 # Scale maximum value to 1
 input_image = Input(shape=(input_width, input_height, input_channels))
+validation_steps = 20
 x = input_image
 
 #####################################
@@ -177,14 +178,16 @@ Debugging code:
 #exit()
 
 #####################################
-#          LOADING DATA             #
+#        GENERATING DATA            #
 #####################################
 
-print "loading data"
+print "defining data generators"
 
 # get a directory listing of the sdo data
 filenames = os.listdir(data_directory)
-train_files = filenames[:50]
+random.shuffle(filenames)
+train_files = filenames[:-validation_steps]
+test_files = filenames[-validation_steps:]
 
 print "loading results file"
 results_path = data_directory + "../Y_GOES_XRAY_20120221_20120311_1hr_456.dat"
@@ -196,51 +199,48 @@ def get_y(filename, y_file=y_file):
     """
     index = int(filename.split("_")[0])    
     return y_file[index] * y_reweight  # Scale maximum value to 1
-    
-def get_files(paths):
+
+def generator():
     """
-    Wrap the data up for training/testing.
-    todo: make this use an generator for efficiency.
+    Generate training samples
     """
-    ret_x = []
-    ret_y = []
-    for idx, f in enumerate(paths):
-        data_x = np.load(data_directory + f)
-        ret_x.append(data_x)
-        ret_y.append(get_y(f))
-    return (np.asarray(ret_x), np.asarray(ret_y))
+    while 1:
+        for f in train_files:
+            data_x = np.load(data_directory + f)
+            data_y = get_y(f)
+            data_x = data_x.astype('float32') / 16509. # Standardize to [-1,1]
+            data_x = np.reshape(data_x, (1, input_width, input_height, input_channels))
+            data_y = np.reshape(data_y, (1))
+            yield (data_x, data_y)
+        random.shuffle(train_files)
+
+def validation_generator():
+    """
+    Generate validation samples
+    """
+    while 1:
+        for f in test_files:
+            data_x = np.load(data_directory + f)
+            data_y = get_y(f)
+            data_x = data_x.astype('float32') / 16509. # Standardize to [-1,1]
+            data_x = np.reshape(data_x, (1, input_width, input_height, input_channels))
+            data_y = np.reshape(data_y, (1))
+            yield (data_x, data_y)
+        random.shuffle(test_files)
+
 
 print "loading image dataset"
-
-# pack the x_train from the train set
-x_train, y_train = get_files(train_files)
-
-# Rescale, todo: do better
-x_train = x_train.astype('float32') / 16509. # Standardize to [-1,1]
-x_train = np.reshape(x_train, (len(x_train), input_width, input_height, input_channels))
 
 #####################################
 #   Optimizing the Neural Network   #
 #####################################
 
-# Spend the lesser of 1000 samples or 5 percent of the sample
-# to validate the results.
-validation_split = 0.05
-if len(x_train) > 1000:
-    validation_split = 1000./len(x_train)
-
-validation_set_size = int(validation_split * len(x_train))
-training_set_size = len(x_train) - validation_set_size
-
-print "validation set size " + str(validation_set_size)
-print "training set size " + str(training_set_size)
-
-history = forecaster.fit(x_train, y_train,
-                         epochs=100,
-                         validation_split=validation_split,
-                         batch_size=100,
-                         shuffle=True,
-                         callbacks=[TensorBoard(log_dir=tensorboard_log_data_path)])
+history = forecaster.fit_generator(generator(),
+                                   100,  #  steps per epoch
+                                   epochs=100,
+                                   validation_data=validation_generator(),
+                                   validation_steps=validation_steps,
+                                   callbacks=[TensorBoard(log_dir=tensorboard_log_data_path)])
 
 # Loss on the training set
 print history.history['loss']

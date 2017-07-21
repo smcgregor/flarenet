@@ -57,6 +57,7 @@ import random
 import datetime
 import argparse
 import sys
+import psutil
 
 # Library for parsing arguments
 import argparse
@@ -134,6 +135,9 @@ maximum_y_value = 0.00054361000000000004
 y_reweight = 1839.55409209 # Scale maximum value to 1
 input_image = Input(shape=(input_width, input_height, input_channels))
 validation_steps = 30
+steps_per_epoch = 50
+samples_per_step = 5  # batch size
+epochs = 300
 x = input_image
 
 #####################################
@@ -201,34 +205,43 @@ def get_y(filename, y_file=y_file):
     index = int(filename.split("_")[0])    
     return y_file[index] * y_reweight  # Scale maximum value to 1
 
-def generator():
+#  Dictionary caching filenames to their normalized in-memory result
+cache = {}
+def generator(training=True):
     """
-    Generate training samples
+    Generate samples
     """
-    while 1:
-        for f in train_files:
-            data_x = np.load(data_directory + f)
-            data_y = get_y(f)
-            data_x = data_x.astype('float32') / 16509. # Standardize to [-1,1]
-            data_x = np.reshape(data_x, (1, input_width, input_height, input_channels))
-            data_y = np.reshape(data_y, (1))
-            yield (data_x, data_y)
-        random.shuffle(train_files)
 
-def validation_generator():
-    """
-    Generate validation samples
-    """
-    while 1:
-        for f in test_files:
-            data_x = np.load(data_directory + f)
-            data_y = get_y(f)
-            data_x = data_x.astype('float32') / 16509. # Standardize to [-1,1]
-            data_x = np.reshape(data_x, (1, input_width, input_height, input_channels))
-            data_y = np.reshape(data_y, (1))
-            yield (data_x, data_y)
-        random.shuffle(test_files)
+    def available_cache(training):
+        """
+        If there is enough main memory, add the object to the cache.
+        Always add the object to the cache if it is in the validation
+        set.
+        """
+        vm = psutil.virtual_memory()
+        return vm.percent < 75 or not training
 
+    if training:
+        files = train_files
+    else:
+        files = test_files
+    while 1:
+        for f in files:
+            if f in cache:
+                data_x = cache[f][0]
+                data_y = cache[f][1]
+            else:
+                data_x = np.load(data_directory + f)
+                data_y = get_y(f)
+                data_x = data_x.astype('float32') / 16509. # Standardize to [-1,1]
+                data_x = np.reshape(data_x, (1, input_width, input_height, input_channels))
+                data_y = np.reshape(data_y, (1))
+
+                if available_cache(training):
+                    cache[f] = [data_x, data_y]
+
+            yield (data_x, data_y)
+        random.shuffle(files)
 
 print "loading image dataset"
 
@@ -239,10 +252,10 @@ print "loading image dataset"
 tensorboard_callbacks = TensorBoard(log_dir=tensorboard_log_data_path)
 corona_callbacks = CoronaCallbacks("argument-search-results", args)
 
-history = forecaster.fit_generator(generator(),
-                                   50,  #  steps per epoch
-                                   epochs=300,
-                                   validation_data=validation_generator(),
+history = forecaster.fit_generator(generator(training=True),
+                                   steps_per_epoch,
+                                   epochs=epochs,
+                                   validation_data=generator(training=False),
                                    validation_steps=validation_steps,
                                    callbacks=[tensorboard_callbacks, corona_callbacks])
 

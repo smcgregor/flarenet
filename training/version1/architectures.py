@@ -225,23 +225,40 @@ def generator(training=True):
         files = train_files
     else:
         files = test_files
+
+    data_x = []
+    data_y = []
+    i = 0
     while 1:
-        for f in files:
-            if f in cache:
-                data_x = cache[f][0]
-                data_y = cache[f][1]
-            else:
-                data_x = np.load(data_directory + f)
-                data_y = get_y(f)
-                data_x = data_x.astype('float32') / 16509. # Standardize to [-1,1]
-                data_x = np.reshape(data_x, (1, input_width, input_height, input_channels))
-                data_y = np.reshape(data_y, (1))
 
-                if available_cache(training):
-                    cache[f] = [data_x, data_y]
+        # The current file
+        f = files[i]
 
-            yield (data_x, data_y)
-        random.shuffle(files)
+        # Get the sample from the cache or load it from disk
+        if f in cache:
+            data_x_sample = cache[f][0]
+            data_y_sample = cache[f][1]
+        else:
+            data_x_sample = np.load(data_directory + f)
+            data_y_sample = get_y(f)
+            data_x_sample = data_x_sample.astype('float32') / 16509. # Standardize to [-1,1]
+
+            if available_cache(training):
+                cache[f] = [data_x_sample, data_y_sample]
+
+        data_x.append(data_x_sample)
+        data_y.append(data_y_sample)
+
+        if i == len(files):
+            i = 0
+            random.shuffle(files)
+
+        if samples_per_step == len(data_x):
+            ret_x = np.reshape(data_x, (len(data_x), input_width, input_height, input_channels))
+            ret_y = np.reshape(data_y, (len(data_y)))
+            yield (ret_x, ret_y)
+            data_x = []
+            data_y = []
 
 print "loading image dataset"
 

@@ -124,15 +124,14 @@ args = parser.parse_args()
 #         SPECIFYING DATA           #
 #####################################
 
-data_directory = "/data/sw/version0/AIA_171/"
+data_directory = "/data/sw/version1/x/"
+results_path = "/data/sw/version1/y/Y_GOES_XRAY_201401.csv"
 tensorboard_log_data_path = "/tmp/version1/"
 seed = 0
 random.seed(seed)
-input_channels = 1
-input_width = 4096
-input_height = 4096
-maximum_y_value = 0.00054361000000000004
-y_reweight = 1839.55409209 # Scale maximum value to 1
+input_channels = 8
+input_width = 1024
+input_height = 1024
 input_image = Input(shape=(input_width, input_height, input_channels))
 validation_steps = 30
 steps_per_epoch = 50
@@ -195,15 +194,19 @@ train_files = filenames[:-validation_steps]
 test_files = filenames[-validation_steps:]
 
 print "loading results file"
-results_path = data_directory + "../Y_GOES_XRAY_20120221_20120311_1hr_456.dat"
-y_file = np.load(results_path)
+y_dict = {}
+with open(results_path, "rb") as f:
+    for line in f:
+        split_y = line.split(",")
+        y_dict[split_y[0]] = float(split_y[1])
 
-def get_y(filename, y_file=y_file):
+def get_y(filename, y_dict=y_dict):
     """
     Get the true forecast result for the current filename.
     """
-    index = int(filename.split("_")[0])    
-    return y_file[index] * y_reweight  # Scale maximum value to 1
+    split_filename = filename.split("_")
+    k = split_filename[0] + "_" + split_filename[1]
+    return y_dict[k]
 
 #  Dictionary caching filenames to their normalized in-memory result
 cache = {}

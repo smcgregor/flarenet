@@ -23,6 +23,7 @@ class CoronaCallbacks(keras.callbacks.Callback):
                 out.write(str(loss[0]))
                 out.write(",")
                 out.write(str(loss[1]))
+                out.write(",")
                 out.write(self.argument_string)
                 out.write("\n")
         return
@@ -39,19 +40,6 @@ class CoronaCallbacks(keras.callbacks.Callback):
 
     def on_batch_end(self, batch, logs={}):
         return
-
-def arguments_to_filename(args):
-    """
-    Take the arguments object from argparse and turn it into a filename.
-    """
-    arg_dict = args.__dict__
-    arg_dict.pop("ignore", None)
-    l = list(arg_dict)
-    l = sorted(l)
-    filename = "search"
-    for arg in l:
-        filename += "--" + arg + "-" + str(arg_dict[arg])
-    return filename + ".csv"
 
 def arguments_to_csv_header(args):
     """

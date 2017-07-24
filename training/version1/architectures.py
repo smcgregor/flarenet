@@ -31,7 +31,7 @@ will be used.
 Before running the script, we recommend you start the tensorboard server so you
 can track the progress.
 
-`tensorboard --logdir=/tmp/version0`
+`tensorboard --logdir=/tmp/version1`
 
 """
 
@@ -125,7 +125,7 @@ args = parser.parse_args()
 #####################################
 
 data_directory = "/data/sw/version0/AIA_171/"
-tensorboard_log_data_path = "/tmp/version0/"
+tensorboard_log_data_path = "/tmp/version1/"
 seed = 0
 random.seed(seed)
 input_channels = 1
@@ -240,8 +240,8 @@ def generator(training=True):
             data_y_sample = cache[f][1]
         else:
             data_x_sample = np.load(data_directory + f)
-            data_y_sample = get_y(f)
             data_x_sample = data_x_sample.astype('float32') / 16509. # Standardize to [-1,1]
+            data_y_sample = get_y(f)
 
             if available_cache(training):
                 cache[f] = [data_x_sample, data_y_sample]

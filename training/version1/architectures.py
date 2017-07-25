@@ -42,6 +42,7 @@ can track the progress.
 # Neural network specification
 from keras.layers import Input, Dense, Conv2D, MaxPooling2D, Dropout, Flatten, Activation
 from keras.models import Model
+from keras.callbacks import ModelCheckpoint
 from keras import backend as K
 
 # Linear algebra library within Python
@@ -127,6 +128,7 @@ args = parser.parse_args()
 data_directory = "/data/sw/version1/x/"
 results_path = "/data/sw/version1/y/Y_GOES_XRAY_201401.csv"
 tensorboard_log_data_path = "/tmp/version1/"
+model_directory_path = "../../models/version1/"
 seed = 0
 random.seed(seed)
 input_channels = 8
@@ -274,13 +276,17 @@ print "loading image dataset"
 
 tensorboard_callbacks = TensorBoard(log_dir=tensorboard_log_data_path)
 corona_callbacks = CoronaCallbacks("argument-search-results", args)
+model_output_path = model_directory_path + corona_callbacks.timestr + "/weights.{epoch:02d}-{val_loss:.2f}.hdf5"
+if not os.path.exists(model_output_path):
+    os.makedirs(model_output_path)
+model_checkpoint = ModelCheckpoint(model_output_path)
 
 history = forecaster.fit_generator(generator(training=True),
                                    steps_per_epoch,
                                    epochs=epochs,
                                    validation_data=generator(training=False),
                                    validation_steps=validation_steps,
-                                   callbacks=[tensorboard_callbacks, corona_callbacks])
+                                   callbacks=[tensorboard_callbacks, corona_callbacks, model_checkpoint])
 
 # Loss on the training set
 print history.history['loss']

@@ -4,8 +4,8 @@ import time
 class CoronaCallbacks(keras.callbacks.Callback):
 
     def __init__(self, filepath, network_arguments):
-        timestr = time.strftime("%Y%m%d-%H%M%S")
-        self.filepath = filepath + "/" + timestr
+        self.timestr = time.strftime("%Y%m%d-%H%M%S")
+        self.filepath = filepath + "/" + self.timestr
         self.argument_string = arguments_to_csv_row(network_arguments)
         with open(self.filepath, "wb") as out:
             csv_header_string =  arguments_to_csv_header(network_arguments)

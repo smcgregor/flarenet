@@ -93,25 +93,25 @@ parser.add_argument('-pool_1_stride', type=int, nargs="?", default=4)
 
 # Set conv_1_channels to 0 to not include this layer
 parser.add_argument('-conv_1_channels', type=int, nargs="?", default=8)
-parser.add_argument('-conv_1_width', type=int, nargs="?", default=1)
-parser.add_argument('-conv_1_height', type=int, nargs="?", default=1)
+parser.add_argument('-conv_1_width', type=int, nargs="?", default=4)
+parser.add_argument('-conv_1_height', type=int, nargs="?", default=4)
 parser.add_argument('-conv_1_stride', type=int, nargs="?", default=1)
 conv_1_activation = "relu" # Not available initially
 
 # Set all pooling parameters to 1 to skip pooling layer
-parser.add_argument('-pool_2_width', type=int, nargs="?", default=2)
-parser.add_argument('-pool_2_height', type=int, nargs="?", default=2)
+parser.add_argument('-pool_2_width', type=int, nargs="?", default=4)
+parser.add_argument('-pool_2_height', type=int, nargs="?", default=4)
 parser.add_argument('-pool_2_stride', type=int, nargs="?", default=4)
 
 # Set conv_2_channels to 0 to not include this layer
-parser.add_argument('-conv_2_channels', type=int, nargs="?", default=4)
-parser.add_argument('-conv_2_width', type=int, nargs="?", default=4)
-parser.add_argument('-conv_2_height', type=int, nargs="?", default=4)
+parser.add_argument('-conv_2_channels', type=int, nargs="?", default=8)
+parser.add_argument('-conv_2_width', type=int, nargs="?", default=2)
+parser.add_argument('-conv_2_height', type=int, nargs="?", default=2)
 parser.add_argument('-conv_2_stride', type=int, nargs="?", default=1)
 conv_2_activation = "relu" # Not available initially
 
 parser.add_argument('-dropout_rate', type=float, nargs="?", default=.3)
-parser.add_argument('-dense_1_count', type=int, nargs="?", default=64)
+parser.add_argument('-dense_1_count', type=int, nargs="?", default=16)
 dense_1_activation = "relu" # Not available for search initially
 
 # Final output for regression
@@ -134,9 +134,9 @@ input_width = 1024
 input_height = 1024
 input_image = Input(shape=(input_width, input_height, input_channels))
 validation_steps = 30
-steps_per_epoch = 50
-samples_per_step = 5  # batch size
-epochs = 300
+steps_per_epoch = 100
+samples_per_step = 32  # batch size
+epochs = 10
 x = input_image
 
 #####################################
@@ -229,6 +229,9 @@ def generator(training=True):
     else:
         files = test_files
 
+    x_mean_vector = [2.2832, 10.6801, 226.4312, 332.5245, 174.1384, 27.1904, 4.7161, 67.1239]
+    x_standard_deviation_vector = [12.3858, 26.1799, 321.5300, 475.9188, 289.4842, 42.3820, 10.3813, 72.7348]
+
     data_x = []
     data_y = []
     i = 0
@@ -243,7 +246,7 @@ def generator(training=True):
             data_y_sample = cache[f][1]
         else:
             data_x_sample = np.load(data_directory + f)
-            data_x_sample = data_x_sample.astype('float32') / 16509. # Standardize to [-1,1]
+            data_x_sample = ((data_x_sample.astype('float32').reshape((input_width*input_height, input_channels)) - x_mean_vector) / x_standard_deviation_vector).reshape((input_width, input_height, input_channels)) # Standardize to [-1,1]
             data_y_sample = get_y(f)
 
             if available_cache(training):

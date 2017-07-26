@@ -55,7 +55,7 @@ from corona_callbacks import CoronaCallbacks
 # Utilities for this script
 import os
 import random
-import datetime
+from datetime import timedelta, datetime
 import argparse
 import sys
 import psutil
@@ -208,7 +208,23 @@ def get_y(filename, y_dict=y_dict):
     """
     split_filename = filename.split("_")
     k = split_filename[0] + "_" + split_filename[1]
-    return y_dict[k]
+    future = y_dict[k]
+    current = get_prior_y(filename)
+    return abs(future - current)
+
+def get_prior_y(filename, y_dict=y_dict):
+    """
+    Get the y value for the prior time step. This will
+    generally be used so we can capture the delta in the
+    prediction value.
+    """
+    f = filename.split("_")
+    datetime_format = '%Y%m%d_%H%M'
+    datetime_object = datetime.strptime(f[0]+"_"+f[1], datetime_format)
+    td = timedelta(minutes=-12)
+    prior_datetime_object = datetime_object + td
+    prior_datetime_string = datetime.strftime(prior_datetime_object, datetime_format)
+    return y_dict[prior_datetime_string]
 
 #  Dictionary caching filenames to their normalized in-memory result
 cache = {}

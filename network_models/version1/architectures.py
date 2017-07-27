@@ -50,7 +50,6 @@ import numpy as np
 
 # Deep learning training library
 from keras.callbacks import TensorBoard
-from corona_callbacks import CoronaCallbacks
 
 # Utilities for this script
 import os
@@ -62,6 +61,10 @@ import psutil
 
 # Library for parsing arguments
 import argparse
+
+# Libraries packaged with this repository
+from network_models.training_callbacks import TrainingCallbacks
+from dataset_models.sdo.aia import aia
 
 # Uncomment to force training to take place on the CPU
 #import os
@@ -171,7 +174,7 @@ print forecaster.summary()
 
 # Do not allow a configuration with more than 150 million parameters
 if forecaster.count_params() > 150000000:
-    print "exiting since this network architecture will contain too many paramters"
+    print "exiting since this network architecture will contain too many parameters"
     print "Result for SMAC: SUCCESS, 0, 0, 999999999, 0" #  todo: figure out the failure string within SMAC
     exit()
 
@@ -187,122 +190,27 @@ Debugging code:
 #        GENERATING DATA            #
 #####################################
 
-print "defining data generators"
+print "initializing data"
 
-# get a directory listing of the sdo data
-filenames = os.listdir(data_directory)
-random.shuffle(filenames)
-train_files = filenames[:-validation_steps]
-test_files = filenames[-validation_steps:]
-
-print "loading results file"
-y_dict = {}
-with open(results_path, "rb") as f:
-    for line in f:
-        split_y = line.split(",")
-        y_dict[split_y[0]] = float(split_y[1])
-
-def get_y(filename, y_dict=y_dict):
-    """
-    Get the true forecast result for the current filename.
-    """
-    split_filename = filename.split("_")
-    k = split_filename[0] + "_" + split_filename[1]
-    future = y_dict[k]
-    current = get_prior_y(filename)
-    return abs(future - current)
-
-def get_prior_y(filename, y_dict=y_dict):
-    """
-    Get the y value for the prior time step. This will
-    generally be used so we can capture the delta in the
-    prediction value.
-    """
-    f = filename.split("_")
-    datetime_format = '%Y%m%d_%H%M'
-    datetime_object = datetime.strptime(f[0]+"_"+f[1], datetime_format)
-    td = timedelta(minutes=-12)
-    prior_datetime_object = datetime_object + td
-    prior_datetime_string = datetime.strftime(prior_datetime_object, datetime_format)
-    return y_dict[prior_datetime_string]
-
-#  Dictionary caching filenames to their normalized in-memory result
-cache = {}
-def generator(training=True):
-    """
-    Generate samples
-    """
-
-    def available_cache(training):
-        """
-        If there is enough main memory, add the object to the cache.
-        Always add the object to the cache if it is in the validation
-        set.
-        """
-        vm = psutil.virtual_memory()
-        return vm.percent < 75 or not training
-
-    if training:
-        files = train_files
-    else:
-        files = test_files
-
-    x_mean_vector = [2.2832, 10.6801, 226.4312, 332.5245, 174.1384, 27.1904, 4.7161, 67.1239]
-    x_standard_deviation_vector = [12.3858, 26.1799, 321.5300, 475.9188, 289.4842, 42.3820, 10.3813, 72.7348]
-
-    data_x = []
-    data_y = []
-    i = 0
-    while 1:
-
-        # The current file
-        f = files[i]
-
-        # Get the sample from the cache or load it from disk
-        if f in cache:
-            data_x_sample = cache[f][0]
-            data_y_sample = cache[f][1]
-        else:
-            data_x_sample = np.load(data_directory + f)
-            data_x_sample = ((data_x_sample.astype('float32').reshape((input_width*input_height, input_channels)) - x_mean_vector) / x_standard_deviation_vector).reshape((input_width, input_height, input_channels)) # Standardize to [-1,1]
-            data_y_sample = get_y(f)
-
-            if available_cache(training):
-                cache[f] = [data_x_sample, data_y_sample]
-
-        data_x.append(data_x_sample)
-        data_y.append(data_y_sample)
-
-        if i == len(files):
-            i = 0
-            random.shuffle(files)
-
-        if samples_per_step == len(data_x):
-            ret_x = np.reshape(data_x, (len(data_x), input_width, input_height, input_channels))
-            ret_y = np.reshape(data_y, (len(data_y)))
-            yield (ret_x, ret_y)
-            data_x = []
-            data_y = []
-
-print "loading image dataset"
+aia = aia.AIA()
 
 #####################################
 #   Optimizing the Neural Network   #
 #####################################
 
 tensorboard_callbacks = TensorBoard(log_dir=tensorboard_log_data_path)
-corona_callbacks = CoronaCallbacks("argument-search-results", args)
-model_output_path = model_directory_path + corona_callbacks.timestr + "/weights.{epoch:02d}-{val_loss:.2f}.hdf5"
+training_callbacks = TrainingCallbacks("network_models/version1/argument-search-results", args)
+model_output_path = model_directory_path + training_callbacks.timestr + "/weights.{epoch:02d}-{val_loss:.2f}.hdf5"
 if not os.path.exists(model_output_path):
     os.makedirs(model_output_path)
 model_checkpoint = ModelCheckpoint(model_output_path)
 
-history = forecaster.fit_generator(generator(training=True),
+history = forecaster.fit_generator(aia.generator(training=True),
                                    steps_per_epoch,
                                    epochs=epochs,
-                                   validation_data=generator(training=False),
+                                   validation_data=aia.generator(training=False),
                                    validation_steps=validation_steps,
-                                   callbacks=[tensorboard_callbacks, corona_callbacks, model_checkpoint])
+                                   callbacks=[tensorboard_callbacks, training_callbacks, model_checkpoint])
 
 # Loss on the training set
 print history.history['loss']

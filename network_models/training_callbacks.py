@@ -1,7 +1,7 @@
 import keras
 import time
 
-class CoronaCallbacks(keras.callbacks.Callback):
+class TrainingCallbacks(keras.callbacks.Callback):
 
     def __init__(self, filepath, network_arguments):
         self.timestr = time.strftime("%Y%m%d-%H%M%S")
@@ -11,13 +11,13 @@ class CoronaCallbacks(keras.callbacks.Callback):
             csv_header_string =  arguments_to_csv_header(network_arguments)
             out.write(csv_header_string)
             out.write("\n")
-        
+
     def on_train_begin(self, logs={}):
         self.losses = []
         return
 
     def on_train_end(self, logs={}):
-        
+
         with open(self.filepath, "ab") as out:
             for loss in self.losses:
                 out.write(str(loss[0]))

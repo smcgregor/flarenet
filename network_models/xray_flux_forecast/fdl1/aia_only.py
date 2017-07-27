@@ -54,10 +54,9 @@ from keras.callbacks import TensorBoard
 # Utilities for this script
 import os
 import random
-from datetime import timedelta, datetime
 import argparse
 import sys
-import psutil
+import yaml
 
 # Library for parsing arguments
 import argparse
@@ -65,6 +64,7 @@ import argparse
 # Libraries packaged with this repository
 from network_models.training_callbacks import TrainingCallbacks
 from dataset_models.sdo.aia import aia
+from tools import tools
 
 # Uncomment to force training to take place on the CPU
 #import os
@@ -125,23 +125,44 @@ dense_2_activation = "linear"
 args = parser.parse_args()
 
 #####################################
+#     Configure the Script          #
+#####################################
+
+# Setup the run
+model_directory_path = "network_models/xray_flux_forecast/fdl1/trained_models/"
+abspath = os.path.abspath(__file__)
+tools.change_directory_to_root()
+head, tail = os.path.split(abspath)
+training_callbacks = TrainingCallbacks(model_directory_path + "performance", args)
+tools.construct_training_file_structure(head + "/trained_models/", training_callbacks.timestr) # Create the training results folders
+
+#####################################
+#        INITIALIZING DATA          #
+#####################################
+
+print "initializing data"
+
+# Load the configuration file. You should never change
+# the configuration within this file.
+with open("network_models/xray_flux_forecast/fdl1/config.yml", "r") as config_file:
+    config = yaml.load(config_file)
+
+aia = aia.AIA(config["samples_per_step"])
+
+#####################################
 #         SPECIFYING DATA           #
 #####################################
 
-data_directory = "/data/sw/version1/x/"
-results_path = "/data/sw/version1/y/Y_GOES_XRAY_201401.csv"
-tensorboard_log_data_path = "/tmp/version1/"
-model_directory_path = "../../models/version1/"
+
 seed = 0
 random.seed(seed)
-input_channels = 8
-input_width = 1024
-input_height = 1024
+input_width, input_height, input_channels = aia.get_dimensions()
 input_image = Input(shape=(input_width, input_height, input_channels))
-validation_steps = 30
-steps_per_epoch = 100
-samples_per_step = 32  # batch size
-epochs = 10
+
+validation_steps = config["validation_steps"]
+steps_per_epoch = config["steps_per_epoch"]
+samples_per_step = config["samples_per_step"] # batch size
+epochs = config["epochs"]
 x = input_image
 
 #####################################
@@ -168,7 +189,7 @@ x = Dense(args.dense_1_count, activation=dense_1_activation)(x)
 prediction = Dense(1, activation=dense_2_activation)(x)
 
 forecaster = Model(input_image, prediction)
-forecaster.compile(optimizer='adadelta', loss='mean_absolute_error')
+forecaster.compile(optimizer=config["optimizer"], loss=config["loss"])
 
 print forecaster.summary()
 
@@ -178,28 +199,13 @@ if forecaster.count_params() > 150000000:
     print "Result for SMAC: SUCCESS, 0, 0, 999999999, 0" #  todo: figure out the failure string within SMAC
     exit()
 
-"""
-Debugging code:
-  Uncomment to plot the network architecture.
-"""
-#from keras.utils import plot_model
-#plot_model(forecaster, to_file='model3.png', show_shapes=True)
-#exit()
-
-#####################################
-#        GENERATING DATA            #
-#####################################
-
-print "initializing data"
-
-aia = aia.AIA()
-
 #####################################
 #   Optimizing the Neural Network   #
 #####################################
 
+tensorboard_log_data_path = "/tmp/version1/"
 tensorboard_callbacks = TensorBoard(log_dir=tensorboard_log_data_path)
-training_callbacks = TrainingCallbacks("network_models/version1/argument-search-results", args)
+
 model_output_path = model_directory_path + training_callbacks.timestr + "/weights.{epoch:02d}-{val_loss:.2f}.hdf5"
 if not os.path.exists(model_output_path):
     os.makedirs(model_output_path)

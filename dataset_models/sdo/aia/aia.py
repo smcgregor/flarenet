@@ -1,5 +1,8 @@
 import yaml
 import os
+import numpy as np
+from datetime import timedelta, datetime
+import psutil
 
 class AIA:
     """
@@ -7,7 +10,7 @@ class AIA:
     and interface of the AIA data.
     """
 
-    def __init__(self, dependent_variable="flux delta"):
+    def __init__(self, samples_per_step, dependent_variable="flux delta"):
         """
         Get a directory listing of the AIA data and load all the filenames
         into memory. We will loop over these filenames while training or
@@ -19,19 +22,32 @@ class AIA:
         output at the next time step.
         """
 
+        #  Dictionary caching filenames to their normalized in-memory result
+        self.cache = {}
+
+        self.samples_per_step = samples_per_step
+
         self.dependent_variable = dependent_variable
+
+        self.input_width = 1024
+        self.input_height = 1024
+        self.input_channels = 8
 
         with open("config.yml", "r") as config_file:
             self.config = yaml.load(config_file)
         assert(self.is_downloaded())
-        train_files = os.listdir(self.config["aia_path"] + "training")
-        validation_files = os.listdir(self.config["aia_path"] + "validation")
-
+        self.train_files = os.listdir(self.config["aia_path"] + "training")
+        self.validation_files = os.listdir(self.config["aia_path"] + "validation")
+        self.validation_directory = self.config["aia_path"] + "validation/"
+        self.training_directory = self.config["aia_path"] + "training/"
         self.y_dict = {}
         with open(self.config["aia_path"] + "y/Y_GOES_XRAY_201401.csv", "rb") as f:
             for line in f:
                 split_y = line.split(",")
                 self.y_dict[split_y[0]] = float(split_y[1])
+
+    def get_dimensions(self):
+        return (self.input_width, self.input_height, self.input_channels)
 
     def is_downloaded(self):
         """
@@ -97,8 +113,6 @@ class AIA:
         prior_datetime_string = datetime.strftime(prior_datetime_object, datetime_format)
         return self.y_dict[prior_datetime_string]
 
-    #  Dictionary caching filenames to their normalized in-memory result
-    cache = {}
     def generator(self, training=True):
         """
         Generate samples
@@ -114,9 +128,11 @@ class AIA:
             return vm.percent < 75 or not training
 
         if training:
-            files = train_files
+            files = self.train_files
+            directory = self.training_directory
         else:
-            files = test_files
+            files = self.validation_files
+            directory = self.validation_directory
 
         x_mean_vector = [2.2832, 10.6801, 226.4312, 332.5245, 174.1384, 27.1904, 4.7161, 67.1239]
         x_standard_deviation_vector = [12.3858, 26.1799, 321.5300, 475.9188, 289.4842, 42.3820, 10.3813, 72.7348]
@@ -130,16 +146,17 @@ class AIA:
             f = files[i]
 
             # Get the sample from the cache or load it from disk
-            if f in cache:
-                data_x_sample = cache[f][0]
-                data_y_sample = cache[f][1]
+            if f in self.cache:
+                data_x_sample = self.cache[f][0]
+                data_y_sample = self.cache[f][1]
             else:
-                data_x_sample = np.load(data_directory + f)
-                data_x_sample = ((data_x_sample.astype('float32').reshape((input_width*input_height, input_channels)) - x_mean_vector) / x_standard_deviation_vector).reshape((input_width, input_height, input_channels)) # Standardize to [-1,1]
-                data_y_sample = get_y(f)
+                shape = (self.input_width*self.input_height, self.input_channels)
+                data_x_sample = np.load(directory + f)
+                data_x_sample = ((data_x_sample.astype('float32').reshape(shape) - x_mean_vector) / x_standard_deviation_vector).reshape(shape) # Standardize to [-1,1]
+                data_y_sample = self.get_y(f)
 
                 if available_cache(training):
-                    cache[f] = [data_x_sample, data_y_sample]
+                    self.cache[f] = [data_x_sample, data_y_sample]
 
             data_x.append(data_x_sample)
             data_y.append(data_y_sample)
@@ -148,8 +165,8 @@ class AIA:
                 i = 0
                 random.shuffle(files)
 
-            if samples_per_step == len(data_x):
-                ret_x = np.reshape(data_x, (len(data_x), input_width, input_height, input_channels))
+            if self.samples_per_step == len(data_x):
+                ret_x = np.reshape(data_x, (len(data_x), self.input_width, self.input_height, self.input_channels))
                 ret_y = np.reshape(data_y, (len(data_y)))
                 yield (ret_x, ret_y)
                 data_x = []

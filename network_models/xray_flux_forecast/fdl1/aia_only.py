@@ -133,8 +133,7 @@ model_directory_path = "network_models/xray_flux_forecast/fdl1/trained_models/"
 abspath = os.path.abspath(__file__)
 tools.change_directory_to_root()
 head, tail = os.path.split(abspath)
-training_callbacks = TrainingCallbacks(model_directory_path + "performance", args)
-tools.construct_training_file_structure(head + "/trained_models/", training_callbacks.timestr) # Create the training results folders
+training_callbacks = TrainingCallbacks(model_directory_path, args)
 
 #####################################
 #        INITIALIZING DATA          #
@@ -206,7 +205,7 @@ if forecaster.count_params() > 150000000:
 tensorboard_log_data_path = "/tmp/version1/"
 tensorboard_callbacks = TensorBoard(log_dir=tensorboard_log_data_path)
 
-model_output_path = model_directory_path + training_callbacks.timestr + "/weights.{epoch:02d}-{val_loss:.2f}.hdf5"
+model_output_path = model_directory_path + training_callbacks.timestr + "/epochs/weights.{epoch:02d}-{val_loss:.2f}.hdf5"
 if not os.path.exists(model_output_path):
     os.makedirs(model_output_path)
 model_checkpoint = ModelCheckpoint(model_output_path)
@@ -219,10 +218,12 @@ history = forecaster.fit_generator(aia.generator(training=True),
                                    callbacks=[tensorboard_callbacks, training_callbacks, model_checkpoint])
 
 # Loss on the training set
+print "printing loss history"
 print history.history['loss']
 
 # Loss on the validation set
 if 'val_loss' in history.history.keys():
+    print "printing history of validation loss over all epochs:"
     print history.history['val_loss']
 
 # Print the performance of the network for the SMAC algorithm

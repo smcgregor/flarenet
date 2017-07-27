@@ -1,11 +1,18 @@
 import keras
 import time
+import os
 
 class TrainingCallbacks(keras.callbacks.Callback):
 
     def __init__(self, filepath, network_arguments):
         self.timestr = time.strftime("%Y%m%d-%H%M%S")
-        self.filepath = filepath + "/" + self.timestr
+        training_directory_path = filepath + str(self.timestr) + "/"
+        os.makedirs(training_directory_path)
+        directories = ["epochs", "performance", "maps", "features", "embeddings"]
+        for directory in directories:
+            cur_path = training_directory_path + directory
+            os.makedirs(training_directory_path + directory)
+        self.filepath = training_directory_path + "performance/loss_and_architecture.csv"
         self.argument_string = arguments_to_csv_row(network_arguments)
         with open(self.filepath, "wb") as out:
             csv_header_string =  arguments_to_csv_header(network_arguments)

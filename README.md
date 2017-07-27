@@ -55,7 +55,7 @@ For more details on these technologies, we recommend starting with the glossary 
         xray_flux_forecast/ # Problem title
             README.md # File describing xray flux forecast problem in general
             fdl1/
-                xray_flux_forecast.py # Python script for training xray flux network
+                aia_only.py # Python script for training xray flux network on AIA data only
                 # Trained neural networks output during training
                 trained_models/
                     TRAINING_START_TIME/

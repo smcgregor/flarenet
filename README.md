@@ -51,7 +51,7 @@ For more details on these technologies, we recommend starting with the glossary 
 
     # Scripts for training models
     network_models/
-        corona_callbacks.py # Library for writing outputs during training
+        training_callbacks.py # Library for writing outputs during training
         xray_flux_forecast/ # Problem title
             README.md # File describing xray flux forecast problem in general
             fdl1/
@@ -59,15 +59,13 @@ For more details on these technologies, we recommend starting with the glossary 
                 # Trained neural networks output during training
                 trained_models/
                     TRAINING_START_TIME/
-                        epochs/ # models for each epoch
-                        performance/ # performance for each model (training and validation)
-                        best_performing.hdf5 # The best performing network
-                        structure.?  # output the complete network architecture
-                        config.json. # Network configuraiton information
+			best_performing.hdf5 # The best performing network
+			summary.txt # The summary output of this architecture
+			epochs/ # models for each epoch
+                        performance/ # performance for the architecture
                         maps/ # Outputs from generating a saliency map from the network
                         features/ # Outputs from deconvolving the network
                         embeddings/ # Outputs from generating network embeddings
-            your_model/ # A starting point for making your first x-ray flux deep learning model
         smac/ # Directory for network optimization library
             optimize.sh # The script for optimizing network architectures
 
@@ -78,11 +76,14 @@ For more details on these technologies, we recommend starting with the glossary 
             AIA/
                 fdl_1.py # 8 Channel AIA data
             HMI/
-    
+
+    # Useful functions that are shared among many different scripts
+    tools/
+        tools.py
+
     # The software development tests for ensuring the networks are doing what they should do
     software_tests:
-        suite.py  # the test suite
-        /data
+        tests.py  # the test suite
 
     # Python scripts for interpreting the data
     science:
@@ -176,6 +177,14 @@ Example setup script for a server that already has the core Nvidia software inst
 > conda update --all  
 > conda install astropy pydot graphviz keras  
 > pip install tensorflow tensorflow-gpu  
+
+Once you successully execute this installation, you should then clone this repository and add it to your python path.
+
+> git clone REPOSITORY_REFERENCE_HERE
+> cd solar-forecast
+> export PYTHONPATH=/PATH/TO/REPOSITORY/solar-forecast:$PYTHONPATH
+
+You can add the line about exporting to your .bash_profile or .bashrc file so you will not need to type it in on every connection to your server.
 
 Please open pull requests to correct this setup script based on your own experiences.
 

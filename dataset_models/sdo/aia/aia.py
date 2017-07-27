@@ -92,7 +92,7 @@ class AIA:
 
         if self.dependent_variable == "flux delta":
             current = self.get_prior_y(filename)
-            return abs(future - current)
+            return future - current
         elif self.dependent_variable == "forecast":
             return future
         else:

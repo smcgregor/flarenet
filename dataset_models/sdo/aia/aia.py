@@ -76,7 +76,7 @@ class AIA:
             print("WARNING: you have no independent variable training dataset")
             print("place these data into " + self.config["aia_path"] + "training")
             return False
-        if not os.path.isfile(self.config["aia_path"] + "validation/20140105_1724_AIA_08_1024_1024.dat"):
+        if not os.path.isfile(self.config["aia_path"] + "validation/20140120_1524_AIA_08_1024_1024.dat"):
             print("WARNING: you have no independent variable validation dataset")
             print("place these data into " + self.config["aia_path"] + "validation")
             return False

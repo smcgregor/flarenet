@@ -125,10 +125,10 @@ dense_2_activation = "linear"
 args = parser.parse_args()
 
 #####################################
-#     Configure the Script          #
+#        CONFIGURE OUTPUTS          #
 #####################################
 
-# Setup the run
+# Set the paths
 model_directory_path = "network_models/xray_flux_forecast/fdl1/trained_models/"
 abspath = os.path.abspath(__file__)
 tools.change_directory_to_root()

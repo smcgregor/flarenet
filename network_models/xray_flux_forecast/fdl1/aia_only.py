@@ -190,7 +190,17 @@ prediction = Dense(1, activation=dense_2_activation)(x)
 forecaster = Model(input_image, prediction)
 forecaster.compile(optimizer=config["optimizer"], loss=config["loss"])
 
-print forecaster.summary()
+forecaster.summary()
+orig_stdout = sys.stdout
+f = open(model_directory_path + training_callbacks.timestr + "/summary.txt", 'w')
+sys.stdout = f
+forecaster.summary() # This does not return the summary string so we capture standard out
+sys.stdout = orig_stdout
+f.close()
+
+print "##################"
+print "Run identifier: " + str(training_callbacks.timestr)
+print "##################"
 
 # Do not allow a configuration with more than 150 million parameters
 if forecaster.count_params() > 150000000:

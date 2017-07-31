@@ -4,6 +4,8 @@ import numpy as np
 from datetime import timedelta, datetime
 import psutil
 import random
+from keras.models import load_model
+
 
 class AIA:
     """
@@ -11,7 +13,7 @@ class AIA:
     and interface of the AIA data.
     """
 
-    def __init__(self, samples_per_step, dependent_variable="flux delta"):
+    def __init__(self, samples_per_step=32, dependent_variable="flux delta"):
         """
         Get a directory listing of the AIA data and load all the filenames
         into memory. We will loop over these filenames while training or
@@ -85,19 +87,41 @@ class AIA:
             return False
         return True
 
+    def get_flux_delta(self, filename):
+        """
+        Return the change in the flux value from the last time step to this one.
+        """
+        split_filename = filename.split("_")
+        k = split_filename[0] + "_" + split_filename[1]
+        try:
+            future = self.y_dict[k]
+            current = self.get_prior_y(filename)
+            return future - current
+        except Exception:
+            print "warning: missing value, " + filename
+            return None
+
+    def get_flux(self, filename):
+        """
+        Return the flux value for the current time step.
+        """
+        split_filename = filename.split("_")
+        k = split_filename[0] + "_" + split_filename[1]
+        try:
+            future = self.y_dict[k]
+            return future
+        except Exception:
+            print "warning: missing value, " + filename
+            return None
+
     def get_y(self, filename):
         """
         Get the true forecast result for the current filename.
         """
-        split_filename = filename.split("_")
-        k = split_filename[0] + "_" + split_filename[1]
-        future = self.y_dict[k]
-
         if self.dependent_variable == "flux delta":
-            current = self.get_prior_y(filename)
-            return future - current
+            return self.get_flux_delta(filename)
         elif self.dependent_variable == "forecast":
-            return future
+            return self.get_flux(filename)
         else:
             assert False # There are currently no other valid dependent variables
             return None
@@ -114,7 +138,11 @@ class AIA:
         td = timedelta(minutes=-12)
         prior_datetime_object = datetime_object + td
         prior_datetime_string = datetime.strftime(prior_datetime_object, datetime_format)
-        return self.y_dict[prior_datetime_string]
+        try:
+            return self.y_dict[prior_datetime_string]
+        except Exception:
+            print "warning: missing value, " + filename
+            return None
 
     def generator(self, training=True):
         """
@@ -182,3 +210,32 @@ class AIA:
                 yield (ret_x, ret_y)
                 data_x = []
                 data_y = []
+
+
+    def evaluate_network(self, network_model_path):
+        """
+        Generate a CSV file with the true and the predicted values for
+        x-ray flux.
+        """
+        model = load_model(network_model_path)
+
+        # Load each of the x values and predict the y values with the best performing network
+        x_predictions = {}
+        for filename in self.train_files:
+            data_x_sample = np.load(self.training_directory + filename)
+            prediction = model.predict(
+                data_x_sample.reshape(1, self.input_width, self.input_height, self.input_channels), verbose=0)
+            x_predictions[filename] = [prediction, self.get_flux_delta(filename), self.get_flux(filename), self.get_prior_y(filename)]
+        for filename in self.validation_files:
+            data_x_sample = np.load(self.validation_directory + filename)
+            prediction = model.predict(
+                data_x_sample.reshape(1, self.input_width, self.input_height, self.input_channels), verbose=0)
+            x_predictions[filename] = [prediction, self.get_flux_delta(filename), self.get_flux(filename), self.get_prior_y(filename)]
+
+        with open(network_model_path + ".performance", "w") as out:
+            out.write("datetime, prediction, true y delta, true y, true prior y\n")
+            keys = list(x_predictions)
+            keys = sorted(keys)
+            for key in keys:
+                cur = x_predictions[key]
+                out.write(key + "," + str(cur[0][0][0]) + "," + str(cur[1]) + "," + str(cur[2]) + "," + str(cur[3]) + "\n")

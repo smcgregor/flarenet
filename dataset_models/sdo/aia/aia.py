@@ -4,6 +4,7 @@ import numpy as np
 from datetime import timedelta, datetime
 import psutil
 import random
+import math
 from keras.models import load_model
 
 
@@ -28,16 +29,19 @@ class AIA:
         #  Dictionary caching filenames to their normalized in-memory result
         self.cache = {}
 
-        self.samples_per_step = samples_per_step
+        self.samples_per_step = samples_per_step  # Batch size
+        self.dependent_variable = dependent_variable # Target forecast
 
-        self.dependent_variable = dependent_variable
-
+        # Dimensions
         self.input_width = 1024
         self.input_height = 1024
         self.input_channels = 8
 
+        # Standardize the random number generator to consistent shuffles
         random.seed(0)
 
+        # Load the configuration file indicating where the files are stored,
+        # then load the names of the data files
         with open("config.yml", "r") as config_file:
             self.config = yaml.load(config_file)
         assert(self.is_downloaded())
@@ -45,13 +49,25 @@ class AIA:
         self.validation_files = os.listdir(self.config["aia_path"] + "validation")
         self.validation_directory = self.config["aia_path"] + "validation/"
         self.training_directory = self.config["aia_path"] + "training/"
+
+        # Load the y variables into memory
+        self.minimum_y = float("Inf")
+        self.maximum_y = float("-Inf")
         self.y_dict = {}
         with open(self.config["aia_path"] + "y/Y_GOES_XRAY_201401.csv", "rb") as f:
             for line in f:
                 split_y = line.split(",")
-                self.y_dict[split_y[0]] = float(split_y[1])
+                cur_y = float(split_y[1])
+                self.y_dict[split_y[0]] = cur_y
+                self.minimum_y = min(self.minimum_y, cur_y)
+                self.maximum_y = max(self.maximum_y, cur_y)
+        self.y_spread = self.maximum_y - self.minimum_y
+        self.clean_data()
 
     def get_dimensions(self):
+        """
+        Helper function returning the dimensions of the inputs.
+        """
         return (self.input_width, self.input_height, self.input_channels)
 
     def is_downloaded(self):
@@ -93,13 +109,9 @@ class AIA:
         """
         split_filename = filename.split("_")
         k = split_filename[0] + "_" + split_filename[1]
-        try:
-            future = self.y_dict[k]
-            current = self.get_prior_y(filename)
-            return future - current
-        except Exception:
-            print "warning: missing value, " + filename
-            return None
+        future = self.y_dict[k]
+        current = self.get_prior_y(filename)
+        return math.log(future - current + self.y_spread + 1)
 
     def get_flux(self, filename):
         """
@@ -107,12 +119,8 @@ class AIA:
         """
         split_filename = filename.split("_")
         k = split_filename[0] + "_" + split_filename[1]
-        try:
-            future = self.y_dict[k]
-            return future
-        except Exception:
-            print "warning: missing value, " + filename
-            return None
+        future = self.y_dict[k]
+        return math.log(future + self.y_spread + 1)
 
     def get_y(self, filename):
         """
@@ -138,26 +146,30 @@ class AIA:
         td = timedelta(minutes=-12)
         prior_datetime_object = datetime_object + td
         prior_datetime_string = datetime.strftime(prior_datetime_object, datetime_format)
-        try:
-            return self.y_dict[prior_datetime_string]
-        except Exception:
-            print "warning: missing value, " + filename
-            return None
+        return self.y_dict[prior_datetime_string]
+
+    def clean_data(self):
+        """
+        Remove all samples that lack the corresponding y value.
+        """
+        starting_training_count = len(self.train_files)
+        starting_validation_count = len(self.validation_files)
+        def filter_files(filename):
+            try:
+                self.get_y(filename)
+            except (KeyError, ValueError) as e:
+                return False
+            return True
+        self.train_files = filter(filter_files, self.train_files)
+        self.validation_files = filter(filter_files, self.validation_files)
+        print "Training " + str(starting_training_count) + "-> " + str(len(self.train_files))
+        print "Validation " + str(starting_validation_count) + "-> " + str(len(self.validation_files))
+
 
     def generator(self, training=True):
         """
         Generate samples
         """
-
-        def available_cache(training):
-            """
-            If there is enough main memory, add the object to the cache.
-            Always add the object to the cache if it is in the validation
-            set.
-            """
-            vm = psutil.virtual_memory()
-            return vm.percent < 75 or not training
-
         if training:
             files = self.train_files
             directory = self.training_directory
@@ -172,31 +184,16 @@ class AIA:
         data_y = []
         i = 0
         while 1:
-
-            # The current file
             f = files[i]
+            shape = (self.input_width*self.input_height, self.input_channels)
+            data_x_sample = np.load(directory + f)
+            data_x_sample = ((data_x_sample.astype('float32').reshape(shape) - x_mean_vector) / x_standard_deviation_vector).reshape(shape) # Standardize to [-1,1]
+            data_y_sample = self.get_y(f)
 
-            # Get the sample from the cache or load it from disk
-            if f in self.cache:
-                data_x_sample = self.cache[f][0]
-                data_y_sample = self.cache[f][1]
-            else:
-                try:
-                    shape = (self.input_width*self.input_height, self.input_channels)
-                    data_x_sample = np.load(directory + f)
-                    data_x_sample = ((data_x_sample.astype('float32').reshape(shape) - x_mean_vector) / x_standard_deviation_vector).reshape(shape) # Standardize to [-1,1]
-                    data_y_sample = self.get_y(f)
-                    if available_cache(training):
-                        self.cache[f] = [data_x_sample, data_y_sample]
-                except Exception:
-                    data_x_sample = []
-                    data_y_sample = []
-
-            if len(data_x_sample) > 0:
-                data_x.append(data_x_sample)
-                data_y.append(data_y_sample)
-            else:
-                print "missing corresponding files for " + f
+            if not data_y_sample:
+                assert False
+            data_x.append(data_x_sample)
+            data_y.append(data_y_sample)
 
             i += 1
 

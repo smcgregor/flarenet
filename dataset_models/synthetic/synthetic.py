@@ -9,7 +9,7 @@ class Synthetic:
     to force precision issues.
     """
 
-    def __init__(self, samples_per_step=32, input_width=4, input_height=4, input_channels=2):
+    def __init__(self, samples_per_step=32, input_width=2, input_height=2, input_channels=2, whiten=True):
         """
         Get a directory listing of the AIA data and load all the filenames
         into memory. We will loop over these filenames while training or
@@ -30,11 +30,13 @@ class Synthetic:
         self.input_width = input_width
         self.input_height = input_height
         self.input_channels = input_channels
+        self.whiten = whiten
 
         self.training_set_size = 1000
         self.validation_set_size = 100
         self.training_indices = range(0, self.training_set_size)
         self.validation_indices = range(0, self.validation_set_size)
+        self.total_y_per_object = 4.0e-6
         self.construct_data()
 
     def construct_data(self):
@@ -48,12 +50,14 @@ class Synthetic:
             """
             random.seed(index)
             data = np.zeros((self.input_width, self.input_height, self.input_channels))
-            per_add = (4.0e-6)/(self.input_width * self.input_height)
+            per_add = (self.total_y_per_object)/float(self.input_width * self.input_height)
             for index in range(0, self.input_width * self.input_height):
                 x = random.randint(0, self.input_width - 1)
                 y = random.randint(0, self.input_height - 1)
                 z = random.randint(0, self.input_channels - 1)
                 data[x][y][z] += per_add
+            if self.whiten:
+                data = data - (self.total_y_per_object / (self.input_width * self.input_height * self.input_channels))
             return data
         for index in range(0, self.training_set_size):
             self.training_data.append([generate_sample(index), 4.0e-6])
@@ -77,22 +81,24 @@ class Synthetic:
         Generate samples
         """
         index_list = self.validation_indices
+        data = self.validation_data
         if training:
             index_list = self.training_indices
+            data = self.training_data
         data_x = []
         data_y = []
         i = 0
         while 1:
-            data_x_sample = self.training_data[index_list[i]]
-            data_y_sample = self.get_y(index_list[i])
+            data_x_sample = data[index_list[i]][0]
+            data_y_sample = data[index_list[i]][1]
             data_x.append(data_x_sample)
             data_y.append(data_y_sample)
 
             i += 1
 
-            if i == len(files):
+            if i == len(index_list):
                 i = 0
-                random.shuffle(self.index_list)
+                random.shuffle(index_list)
 
             if self.samples_per_step == len(data_x):
                 ret_x = np.reshape(data_x, (len(data_x), self.input_width, self.input_height, self.input_channels))

@@ -14,7 +14,7 @@ class AIA2:
     and interface of the AIA data.
     """
 
-    def __init__(self, samples_per_step=32, dependent_variable="flux delta", lag="00min", catch="12min"):
+    def __init__(self, samples_per_step=32, dependent_variable="flux delta", lag="00min", catch="24hr"):
         """
         Get a directory listing of the AIA data and load all the filenames
         into memory. We will loop over these filenames while training or
@@ -58,6 +58,14 @@ class AIA2:
         self.minimum_y = float("Inf")
         self.maximum_y = float("-Inf")
         self.y_dict = {}
+
+        self.y_prior_dict = {}
+        self.y_prior_filepath = self.config["aia_path_2"] + "y/Y_GOES_XRAY_201401_201406_00minDELAY_12minMAX.csv"
+        with open(self.y_prior_filepath, "rb") as f:
+            for line in f:
+                split_y = line.split(",")
+                cur_y = float(split_y[1])
+                self.y_prior_dict[split_y[0]] = cur_y
 
         with open(self.y_filepath, "rb") as f:
             for line in f:
@@ -115,7 +123,7 @@ class AIA2:
         k = filename[3:11] + filename[11:16]
         future = self.y_dict[k]
         current = self.get_prior_y(filename)
-        return math.log(future - current + self.y_spread + 1)
+        return future - current
 
     def get_flux(self, filename):
         """
@@ -123,7 +131,7 @@ class AIA2:
         """
         k = filename[3:11] + filename[11:16]
         future = self.y_dict[k]
-        return math.log(future + self.y_spread + 1)
+        return future
 
     def get_y(self, filename):
         """
@@ -137,6 +145,21 @@ class AIA2:
             assert False # There are currently no other valid dependent variables
             return None
 
+    def get_prior_timestep_string(self, filename):
+        """
+        Get the filename of the previous timestep
+        """
+        datetime_format = '%Y%m%d_%H%M'
+        datetime_object = datetime.strptime(filename[3:11] + filename[11:16], datetime_format)
+        td = timedelta(minutes=-12)
+        prior_datetime_object = datetime_object + td
+        prior_datetime_string = datetime.strftime(prior_datetime_object, datetime_format)
+        return prior_datetime_string
+
+    def get_prior_x_filename(self, filename):
+        identifier = self.get_prior_timestep_string(filename)
+        return "AIA" + identifier + "_08chnls.dat"
+
     def get_prior_y(self, filename):
         """
         Get the y value for the prior time step. This will
@@ -144,12 +167,8 @@ class AIA2:
         prediction value. We also feed it into the neural network
         as side information.
         """
-        datetime_format = '%Y%m%d_%H%M'
-        datetime_object = datetime.strptime(filename[3:11] + filename[11:16], datetime_format)
-        td = timedelta(minutes=-12)
-        prior_datetime_object = datetime_object + td
-        prior_datetime_string = datetime.strftime(prior_datetime_object, datetime_format)
-        return self.y_dict[prior_datetime_string]
+        prior_datetime_string = self.get_prior_timestep_string(filename)
+        return self.y_prior_dict[prior_datetime_string]
 
     def clean_data(self):
         """
@@ -159,10 +178,15 @@ class AIA2:
         starting_validation_count = len(self.validation_files)
         def filter_files(filename):
             try:
+                self.get_prior_y(filename)
                 self.get_y(filename)
+                prior_x = self.get_prior_x_filename(filename)
             except (KeyError, ValueError) as e:
                 return False
-            return True
+            if prior_x not in self.train_files: # and prior_x not in self.validation_files:
+                return False
+            else:
+                return True
         self.train_files = filter(filter_files, self.train_files)
         self.validation_files = filter(filter_files, self.validation_files)
         print "Training " + str(starting_training_count) + "-> " + str(len(self.train_files))
@@ -184,7 +208,7 @@ class AIA2:
             21.98
         ]
         return np.array(x_mean_vector).reshape((1,1,1,self.input_channels))
-        
+
     def get_unit_deviation_tensor(self):
         """
         Get a tensor for changing the data to have unit variance.
@@ -212,6 +236,7 @@ class AIA2:
             files = self.validation_files
             directory = self.validation_directory            
         data_x_image = []
+        data_x_prior_image = []
         data_x_side_channel = []
         data_y = []
         shape = (self.input_width*self.input_height, self.input_channels)
@@ -220,9 +245,11 @@ class AIA2:
             f = files[i]
             i += 1
             data_x_image_sample = np.load(directory + f)
+            data_x_prior_image_sample = np.load(self.training_directory + self.get_prior_x_filename(f))
             data_x_side_channel_sample = np.array([self.get_prior_y(f)])
             data_y_sample = self.get_y(f)
             data_x_image.append(data_x_image_sample)
+            data_x_prior_image.append(data_x_prior_image_sample)
             data_x_side_channel.append(data_x_side_channel_sample)
             data_y.append(data_y_sample)
 
@@ -233,10 +260,12 @@ class AIA2:
 
             if self.samples_per_step == len(data_x_image) or not training:
                 ret_x_image = np.reshape(data_x_image, (len(data_x_image), self.input_width, self.input_height, self.input_channels))
+                ret_x_prior_image = np.reshape(data_x_prior_image, (len(data_x_prior_image), self.input_width, self.input_height, self.input_channels))
                 ret_x_side_channel = np.reshape(data_x_side_channel, (len(data_x_side_channel), 1))
                 ret_y = np.reshape(data_y, (len(data_y)))
-                yield ([ret_x_image, ret_x_side_channel],ret_y)
+                yield ([ret_x_image, ret_x_prior_image, ret_x_side_channel], ret_y)
                 data_x_image = []
+                data_x_prior_image = []
                 data_x_side_channel = []
                 data_y = []
 
@@ -245,19 +274,28 @@ class AIA2:
         Generate a CSV file with the true and the predicted values for
         x-ray flux.
         """
-        model = load_model(network_model_path)
+        from keras import backend as K
+
+        tmp1 = np.array([1])
+        tmp3 = np.array([3])
+        tmp10000000 = np.array([10000000])
+        def custom_loss(y_true, y_pred):
+            return K.tf.pow(K.tf.multiply(K.tf.abs(y_pred - y_true), tmp10000000), tmp3)
+            #return K.tf.log(K.tf.add(K.tf.abs(y_pred - y_true), tmp))
+
+        model = load_model(network_model_path, custom_objects={"centering_tensor": self.get_centering_tensor(), "scaling_tensor": self.get_unit_deviation_tensor(), "custom_loss": custom_loss})
 
         # Load each of the x values and predict the y values with the best performing network
         x_predictions = {}
-        for filename in self.train_files:
+        for filename in self.train_files[0::100]:
             data_x_sample = np.load(self.training_directory + filename)
             prediction = model.predict(
-                data_x_sample.reshape(1, self.input_width, self.input_height, self.input_channels), verbose=0)
+                [data_x_sample.reshape(1, self.input_width, self.input_height, self.input_channels), np.array(self.get_prior_y(filename)).reshape(1)], verbose=0)
             x_predictions[filename] = [prediction, self.get_flux_delta(filename), self.get_flux(filename), self.get_prior_y(filename)]
-        for filename in self.validation_files:
+        for filename in self.validation_files[0:5]:
             data_x_sample = np.load(self.validation_directory + filename)
             prediction = model.predict(
-                data_x_sample.reshape(1, self.input_width, self.input_height, self.input_channels), verbose=0)
+                [data_x_sample.reshape(1, self.input_width, self.input_height, self.input_channels), np.array(self.get_prior_y(filename)).reshape(1)], verbose=0)
             x_predictions[filename] = [prediction, self.get_flux_delta(filename), self.get_flux(filename), self.get_prior_y(filename)]
 
         with open(network_model_path + ".performance", "w") as out:

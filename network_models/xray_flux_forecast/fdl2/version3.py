@@ -40,7 +40,7 @@ can track the progress.
 #####################################
 
 # Neural network specification
-from keras.layers import Input, Dense, Conv2D, MaxPooling2D, Dropout, Flatten, Activation, AveragePooling2D, concatenate, Lambda
+from keras.layers import Input, Dense, Conv2D, Conv1D, MaxPooling2D, Dropout, Flatten, Activation, AveragePooling2D, concatenate, Lambda
 from keras.models import Model
 from keras.callbacks import ModelCheckpoint
 from keras import backend as K
@@ -165,6 +165,8 @@ steps_per_epoch = config["steps_per_epoch"]
 samples_per_step = config["samples_per_step"] # batch size
 epochs = config["epochs"]
 x = input_image
+input_prior_image = Input(shape=(input_width, input_height, input_channels))
+x_prior = input_prior_image
 
 #####################################
 #     Constructing Architecture     #
@@ -178,19 +180,40 @@ centering_tensor = aia.get_centering_tensor()
 scaling_tensor = aia.get_unit_deviation_tensor()
 def output_of_lambda(input_shape):
     return input_shape
-def subtract(x):
+def whiten(x):
     x = K.tf.subtract(x, centering_tensor)
     x = K.tf.divide(x, scaling_tensor)
     return x
-x = Lambda(subtract, output_shape=output_of_lambda)(x)
-x = AveragePooling2D(pool_size=(input_width, input_height), strides=None, padding='valid')(x)
+x = Lambda(whiten, output_shape=output_of_lambda)(x)
+x_prior = Lambda(whiten, output_shape=output_of_lambda)(x_prior)
+x = concatenate([x, x_prior])
+x = Conv2D(4, (1,1), padding='same')(x)
+x = MaxPooling2D(pool_size=(4, 4), strides=4, padding='valid')(x)
+x = Conv2D(32, (4,4), padding='valid')(x)
+x = MaxPooling2D(pool_size=(4, 4), strides=4, padding='valid')(x)
+x = Conv2D(32, (4,4), padding='valid', strides=4)(x)
+x = MaxPooling2D(pool_size=(4, 4), strides=2, padding='valid')(x)
+x = Conv2D(32, (2,2), padding='valid', strides=2)(x)
 x = Flatten()(x)
-x_concat = concatenate([x, input_side_channel])
-prediction = Dense(1, activation="linear")(x_concat)
+x = Dropout(.5)(x)
+x = concatenate([x, input_side_channel])
+x = Dense(32, activation="relu")(x)
+x = Dense(8, activation="relu")(x)
+x = Dense(4, activation="relu")(x)
+prediction = Dense(1, activation="linear")(x)
 
-forecaster = Model(inputs=[input_image, input_side_channel], outputs=[prediction])
-forecaster.compile(optimizer=adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0001), loss=config["loss"])
-#forecaster.compile(optimizer=config["optimizer"], loss=config["loss"])
+forecaster = Model(inputs=[input_image, input_prior_image, input_side_channel], outputs=[prediction])
+
+tmp1 = np.array([1])
+tmp3 = np.array([3])
+tmp100000 = np.array([100000])
+def custom_loss(y_true, y_pred):
+    return K.tf.pow(K.tf.add(K.tf.multiply(K.tf.abs(y_pred - y_true), tmp100000), 1), tmp3)
+    #return K.tf.log(K.tf.add(K.tf.abs(y_pred - y_true), tmp))
+
+#forecaster.compile(optimizer=adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0001), loss="mean_squared_logarithmic_error")
+#forecaster.compile(optimizer=adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0001), loss=custom_loss)
+forecaster.compile(optimizer=config["optimizer"], loss=config["loss"])
 
 # Print the netwrok summary information
 forecaster.summary()

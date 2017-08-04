@@ -49,14 +49,12 @@ class AIA:
         random.seed(0)
 
         assert(self.is_downloaded())
-        self.train_files = os.listdir(self.config["aia_path"] + "training")
-        self.validation_files = os.listdir(self.config["aia_path"] + "validation")
-        self.validation_directory = self.config["aia_path"] + "validation/"
         self.training_directory = self.config["aia_path"] + "training/"
+        self.validation_directory = self.config["aia_path"] + "validation/"
+        self.train_files = os.listdir(self.training_directory)
+        self.validation_files = os.listdir(self.validation_directory)
 
         # Load the y variables into memory
-        self.minimum_y = float("Inf")
-        self.maximum_y = float("-Inf")
         self.y_dict = {}
 
         # The number of image timesteps to include as the independent variable
@@ -75,9 +73,6 @@ class AIA:
                 split_y = line.split(",")
                 cur_y = float(split_y[1])
                 self.y_dict[split_y[0]] = cur_y
-                self.minimum_y = min(self.minimum_y, cur_y)
-                self.maximum_y = max(self.maximum_y, cur_y)
-        self.y_spread = self.maximum_y - self.minimum_y
         self.clean_data()
 
     def get_dimensions(self):

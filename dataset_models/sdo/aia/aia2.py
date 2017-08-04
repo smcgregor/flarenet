@@ -59,6 +59,9 @@ class AIA:
         self.maximum_y = float("-Inf")
         self.y_dict = {}
 
+        # The number of image timesteps to include as the independent variable
+        self.image_count = 2
+        
         self.y_prior_dict = {}
         self.y_prior_filepath = self.config["aia_path_2"] + "y/Y_GOES_XRAY_201401_201406_00minDELAY_12minMAX.csv"
         with open(self.y_prior_filepath, "rb") as f:
@@ -192,6 +195,23 @@ class AIA:
         ]
         return np.array(x_standard_deviation_vector).reshape((1,1,1,self.input_channels))
 
+    def get_x_data(self, filename, directory, image_count=1, current_data=None):
+        """
+        Get the list of data associated with the sample filename.
+        @param filename {string} The name of the file which we are currently sampling.
+        @param directory {string} The location in which we will look for the file.
+        @param prior_x_image_count {int} The total number of timestep images to be composited.
+        @param current_data {list} The data that we will append to.
+        """
+        current_data[0].append(np.load(directory + filename))
+        previous_filename = filename
+        for index in range(0, image_count):
+            previous_filename = self.get_prior_x_filename(previous_filename)
+            current_data[index + 1].append(np.load(self.training_directory + previous_filename))
+        data_x_side_channel_sample = np.array([self.get_prior_y(f)])
+        current_data[-1].append(data_x_side_channel_sample)
+        return current_data
+
     def generator(self, training=True):
         """
         Generate samples
@@ -202,23 +222,17 @@ class AIA:
         else:
             files = self.validation_files
             directory = self.validation_directory            
-        data_x_image = []
-        data_x_prior_image = []
-        data_x_side_channel = []
         data_y = []
-        shape = (self.input_width*self.input_height, self.input_channels)
+        data_x = []
+        for index in range(0, self.image_count + 1):
+            data_x.append([])
+        shape = (self.input_width * self.input_height, self.input_channels)
         i = 0
         while 1:
             f = files[i]
             i += 1
-            data_x_image_sample = np.load(directory + f)
-            data_x_prior_image_sample = np.load(self.training_directory + self.get_prior_x_filename(f))
-            data_x_side_channel_sample = np.array([self.get_prior_y(f)])
-            data_y_sample = self.get_y(f)
-            data_x_image.append(data_x_image_sample)
-            data_x_prior_image.append(data_x_prior_image_sample)
-            data_x_side_channel.append(data_x_side_channel_sample)
-            data_y.append(data_y_sample)
+            self.get_x_data(f, directory, image_count=self.image_count, data_x)
+            data_y.append(self.get_y(f))
 
             if i == len(files):
                 i = 0
@@ -226,14 +240,14 @@ class AIA:
                     random.shuffle(files)
 
             if self.samples_per_step == len(data_x_image) or not training:
-                ret_x_image = np.reshape(data_x_image, (len(data_x_image), self.input_width, self.input_height, self.input_channels))
-                ret_x_prior_image = np.reshape(data_x_prior_image, (len(data_x_prior_image), self.input_width, self.input_height, self.input_channels))
-                ret_x_side_channel = np.reshape(data_x_side_channel, (len(data_x_side_channel), 1))
+                for index in range(0, len(data_x)):
+                    data_x[index] = np.reshape(data_x[index], (len(data_x_image), self.input_width, self.input_height, self.input_channels))
+                data_x[-1] = np.reshape(data_x_side_channel, (len(data_x_side_channel), 1))
                 ret_y = np.reshape(data_y, (len(data_y)))
-                yield ([ret_x_image, ret_x_prior_image, ret_x_side_channel], ret_y)
-                data_x_image = []
-                data_x_prior_image = []
-                data_x_side_channel = []
+                yield (data_x, ret_y)
+                data_x = []
+                for index in range(0, self.image_count + 1):
+                    data_x.append([])
                 data_y = []
 
     def evaluate_network(self, network_model_path):
@@ -242,28 +256,34 @@ class AIA:
         x-ray flux.
         """
 
-        model = load_model(network_model_path, custom_objects={"centering_tensor": self.get_centering_tensor(), "scaling_tensor": self.get_unit_deviation_tensor()})
+        custom_objects = {"centering_tensor": self.get_centering_tensor(),
+                          "scaling_tensor": self.get_unit_deviation_tensor()}
+        model = load_model(network_model_path,
+                           custom_objects=custom_objects)
 
-        # Load each of the x values and predict the y values with the best performing network
-        x_predictions = {}
-        for filename in self.train_files[0::100]:
-            data_x_sample = np.load(self.training_directory + filename)
-            prediction = model.predict(
-                [data_x_sample.reshape(1, self.input_width, self.input_height, self.input_channels), np.array(self.get_prior_y(filename)).reshape(1)], verbose=0)
-            x_predictions[filename] = [prediction, self.get_flux_delta(filename), self.get_flux(filename), self.get_prior_y(filename)]
-        for filename in self.validation_files[0:5]:
-            data_x_sample = np.load(self.validation_directory + filename)
-            prediction = model.predict(
-                [data_x_sample.reshape(1, self.input_width, self.input_height, self.input_channels), np.array(self.get_prior_y(filename)).reshape(1)], verbose=0)
-            x_predictions[filename] = [prediction, self.get_flux_delta(filename), self.get_flux(filename), self.get_prior_y(filename)]
+        def save_performance(file_names, file_path, outfile_path):
+            """
+            Evaluate the files with the model and output them
+            @param files {list[string]}
+            @param outfile_path {string}
+            """
 
-        with open(network_model_path + ".performance", "w") as out:
-            out.write("datetime, prediction, true y delta, true y, true prior y\n")
-            keys = list(x_predictions)
-            keys = sorted(keys)
-            for key in keys:
-                cur = x_predictions[key]
-                out.write(key + "," + str(cur[0][0][0]) + "," + str(cur[1]) + "," + str(cur[2]) + "," + str(cur[3]) + "\n")
+            x_predictions = {}
+            for filename in files:
+                data_x_sample = np.load(file_path + filename)
+                prediction = model.predict(
+                    [data_x_sample.reshape(1, self.input_width, self.input_height, self.input_channels), np.array(self.get_prior_y(filename)).reshape(1)], verbose=0)
+                x_predictions[filename] = [prediction, self.get_flux_delta(filename), self.get_flux(filename), self.get_prior_y(filename)]
+
+            with open(outfile_path, "w") as out:
+                out.write("datetime, prediction, true y delta, true y, true prior y\n")
+                keys = list(x_predictions)
+                keys = sorted(keys)
+                for key in keys:
+                    cur = x_predictions[key]
+                    out.write(key + "," + str(cur[0][0][0]) + "," + str(cur[1]) + "," + str(cur[2]) + "," + str(cur[3]) + "\n")
+        save_performance(self.train_files[0::100], self.training_directory, network_model_path + "training.performance")
+        save_performance(self.validation_files, self.validation_directory, network_model_path + "validation.performance")
 
     def download_dataset(self):
         """

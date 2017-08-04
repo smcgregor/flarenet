@@ -63,7 +63,7 @@ import argparse
 
 # Libraries packaged with this repository
 from network_models.training_callbacks import TrainingCallbacks
-from dataset_models.sdo.aia import aia2
+from dataset_models.sdo.aia import aia
 from tools import tools
 
 from keras.optimizers import adam
@@ -145,10 +145,10 @@ print "initializing data"
 
 # Load the configuration file. You should never change
 # the configuration within this file.
-with open("network_models/xray_flux_forecast/fdl2/config.yml", "r") as config_file:
+with open("config.yml", "r") as config_file:
     config = yaml.load(config_file)
 
-aia = aia2.AIA2(config["samples_per_step"])
+aia = aia.AIA(config["samples_per_step"])
 
 #####################################
 #         SPECIFYING DATA           #

@@ -38,7 +38,7 @@ class AIA:
         self.samples_per_step = samples_per_step  # Batch size
         self.dependent_variable = dependent_variable # Target forecast
 
-        self.y_filepath = self.config["aia_path_2"] + "y/Y_GOES_XRAY_201401_201406_" + lag + "DELAY_" + catch + "MAX.csv"
+        self.y_filepath = self.config["aia_path"] + "y/Y_GOES_XRAY_201401_201406_" + lag + "DELAY_" + catch + "MAX.csv"
         
         # Dimensions
         self.input_width = 1024
@@ -49,10 +49,10 @@ class AIA:
         random.seed(0)
 
         assert(self.is_downloaded())
-        self.train_files = os.listdir(self.config["aia_path_2"] + "training")
-        self.validation_files = os.listdir(self.config["aia_path_2"] + "validation")
-        self.validation_directory = self.config["aia_path_2"] + "validation/"
-        self.training_directory = self.config["aia_path_2"] + "training/"
+        self.train_files = os.listdir(self.config["aia_path"] + "training")
+        self.validation_files = os.listdir(self.config["aia_path"] + "validation")
+        self.validation_directory = self.config["aia_path"] + "validation/"
+        self.training_directory = self.config["aia_path"] + "training/"
 
         # Load the y variables into memory
         self.minimum_y = float("Inf")
@@ -63,7 +63,7 @@ class AIA:
         self.image_count = 2
         
         self.y_prior_dict = {}
-        self.y_prior_filepath = self.config["aia_path_2"] + "y/Y_GOES_XRAY_201401_201406_00minDELAY_12minMAX.csv"
+        self.y_prior_filepath = self.config["aia_path"] + "y/Y_GOES_XRAY_201401_201406_00minDELAY_12minMAX.csv"
         with open(self.y_prior_filepath, "rb") as f:
             for line in f:
                 split_y = line.split(",")

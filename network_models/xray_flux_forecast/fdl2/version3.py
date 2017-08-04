@@ -252,7 +252,9 @@ history = forecaster.fit_generator(aia.generator(training=True),
                                    epochs=epochs,
                                    validation_data=aia.generator(training=False),
                                    validation_steps=validation_steps,
-                                   callbacks=[tensorboard_callbacks, training_callbacks, model_checkpoint])
+                                   callbacks=[tensorboard_callbacks, training_callbacks, model_checkpoint],
+                                   #nb_worker=2
+)
 
 # Loss on the training set
 print "printing loss history"

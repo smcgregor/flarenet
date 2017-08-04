@@ -8,7 +8,7 @@ import math
 from keras.models import load_model
 
 
-class AIA2:
+class AIA:
     """
     A class for managing the download
     and interface of the AIA data.
@@ -82,39 +82,6 @@ class AIA2:
         Helper function returning the dimensions of the inputs.
         """
         return (self.input_width, self.input_height, self.input_channels)
-
-    def is_downloaded(self):
-        """
-        Determine whether the AIA dataset has been downloaded.
-        """
-        if not os.path.isdir(self.config["aia_path"]):
-            print("WARNING: the data directory specified in config.yml does not exist")
-            return False
-        if not os.path.isdir(self.config["aia_path"] + "validation"):
-            print("WARNING: you have no validation folder")
-            print("place these data into " + self.config["aia_path"] + "validation")
-            return False
-        if not os.path.isdir(self.config["aia_path"] + "training"):
-            print("WARNING: you have no training folder")
-            print("place these data into " + self.config["aia_path"] + "training")
-            return False
-        if not os.path.isdir(self.config["aia_path"] + "y"):
-            print("WARNING: you have no dependent variable folder")
-            print("place these data into " + self.config["aia_path"] + "y")
-            return False
-        if not os.path.isfile(self.config["aia_path"] + "y/Y_GOES_XRAY_201401.csv"):
-            print("WARNING: you have no results dataset")
-            print("place these data into " + self.config["aia_path"] + "y")
-            return False
-        if not os.path.isfile(self.config["aia_path"] + "training/20140121_1400_AIA_08_1024_1024.dat"):
-            print("WARNING: you have no independent variable training dataset")
-            print("place these data into " + self.config["aia_path"] + "training")
-            return False
-        if not os.path.isfile(self.config["aia_path"] + "validation/20140120_1524_AIA_08_1024_1024.dat"):
-            print("WARNING: you have no independent variable validation dataset")
-            print("place these data into " + self.config["aia_path"] + "validation")
-            return False
-        return True
 
     def get_flux_delta(self, filename):
         """
@@ -274,16 +241,8 @@ class AIA2:
         Generate a CSV file with the true and the predicted values for
         x-ray flux.
         """
-        from keras import backend as K
 
-        tmp1 = np.array([1])
-        tmp3 = np.array([3])
-        tmp10000000 = np.array([10000000])
-        def custom_loss(y_true, y_pred):
-            return K.tf.pow(K.tf.multiply(K.tf.abs(y_pred - y_true), tmp10000000), tmp3)
-            #return K.tf.log(K.tf.add(K.tf.abs(y_pred - y_true), tmp))
-
-        model = load_model(network_model_path, custom_objects={"centering_tensor": self.get_centering_tensor(), "scaling_tensor": self.get_unit_deviation_tensor(), "custom_loss": custom_loss})
+        model = load_model(network_model_path, custom_objects={"centering_tensor": self.get_centering_tensor(), "scaling_tensor": self.get_unit_deviation_tensor()})
 
         # Load each of the x values and predict the y values with the best performing network
         x_predictions = {}
@@ -305,3 +264,43 @@ class AIA2:
             for key in keys:
                 cur = x_predictions[key]
                 out.write(key + "," + str(cur[0][0][0]) + "," + str(cur[1]) + "," + str(cur[2]) + "," + str(cur[3]) + "\n")
+
+    def download_dataset(self):
+        """
+        Download the datasets expected by this data adapter to the directory
+        specified by the config.yml file.
+        """
+        assert False, "This has not yet been implemented"
+
+    def is_downloaded(self):
+        """
+        Determine whether the AIA dataset has been downloaded.
+        """
+        if not os.path.isdir(self.config["aia_path"]):
+            print("WARNING: the data directory specified in config.yml does not exist")
+            return False
+        if not os.path.isdir(self.config["aia_path"] + "validation"):
+            print("WARNING: you have no validation folder")
+            print("place these data into " + self.config["aia_path"] + "validation")
+            return False
+        if not os.path.isdir(self.config["aia_path"] + "training"):
+            print("WARNING: you have no training folder")
+            print("place these data into " + self.config["aia_path"] + "training")
+            return False
+        if not os.path.isdir(self.config["aia_path"] + "y"):
+            print("WARNING: you have no dependent variable folder")
+            print("place these data into " + self.config["aia_path"] + "y")
+            return False
+        if not os.path.isfile(self.config["aia_path"] + "y/Y_GOES_XRAY_201401_201406_00minDELAY_01hrMAX.csv"):
+            print("WARNING: you have no results datasets")
+            print("place these data into " + self.config["aia_path"] + "y")
+            return False
+        if not os.path.isfile(self.config["aia_path"] + "training/AIA20140617_2136_08chnls.dat"):
+            print("WARNING: you have no independent variable training dataset")
+            print("place these data into " + self.config["aia_path"] + "training")
+            return False
+        if not os.path.isfile(self.config["aia_path"] + "validation/AIA20140308_1400_08chnls.dat"):
+            print("WARNING: you have no independent variable validation dataset")
+            print("place these data into " + self.config["aia_path"] + "validation")
+            return False
+        return True

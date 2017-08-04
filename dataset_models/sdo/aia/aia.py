@@ -141,19 +141,21 @@ class AIA:
         """
         starting_training_count = len(self.train_files)
         starting_validation_count = len(self.validation_files)
-        def filter_files(filename):
-            try:
-                self.get_prior_y(filename)
-                self.get_y(filename)
-                prior_x = self.get_prior_x_filename(filename)
-            except (KeyError, ValueError) as e:
-                return False
-            if prior_x not in self.train_files: # and prior_x not in self.validation_files:
-                return False
-            else:
-                return True
-        self.train_files = filter(filter_files, self.train_files)
-        self.validation_files = filter(filter_files, self.validation_files)
+        def filter_closure(training):
+            def filter_files(filename):
+                try:
+                    self.get_prior_y(filename)
+                    self.get_y(filename)
+                    prior_x_file = self.get_prior_x_filename(filename)
+                except (KeyError, ValueError) as e:
+                    return False
+                if prior_x_file not in self.train_files:
+                    return False
+                else:
+                    return True
+            return filter_files
+        self.train_files = filter(filter_closure(True), self.train_files)
+        self.validation_files = filter(filter_closure(False), self.validation_files)
         print "Training " + str(starting_training_count) + "-> " + str(len(self.train_files))
         print "Validation " + str(starting_validation_count) + "-> " + str(len(self.validation_files))
 
@@ -190,20 +192,20 @@ class AIA:
         ]
         return np.array(x_standard_deviation_vector).reshape((1,1,1,self.input_channels))
 
-    def get_x_data(self, filename, directory, image_count=1, current_data=None):
+    def get_x_data(self, filename, directory, image_count=2, current_data=None):
         """
         Get the list of data associated with the sample filename.
         @param filename {string} The name of the file which we are currently sampling.
         @param directory {string} The location in which we will look for the file.
-        @param prior_x_image_count {int} The total number of timestep images to be composited.
+        @param image_count {int} The total number of timestep images to be composited.
         @param current_data {list} The data that we will append to.
+        todo: make this better
         """
         current_data[0].append(np.load(directory + filename))
-        previous_filename = filename
-        for index in range(0, image_count):
-            previous_filename = self.get_prior_x_filename(previous_filename)
-            current_data[index + 1].append(np.load(self.training_directory + previous_filename))
-        data_x_side_channel_sample = np.array([self.get_prior_y(f)])
+        if image_count > 1:
+            previous_filename = self.get_prior_x_filename(filename)
+            current_data[1].append(np.load(self.training_directory + previous_filename))
+        data_x_side_channel_sample = np.array([self.get_prior_y(filename)])
         current_data[-1].append(data_x_side_channel_sample)
         return current_data
 
@@ -226,7 +228,7 @@ class AIA:
         while 1:
             f = files[i]
             i += 1
-            self.get_x_data(f, directory, image_count=self.image_count, data_x)
+            self.get_x_data(f, directory, image_count=self.image_count, current_data=data_x)
             data_y.append(self.get_y(f))
 
             if i == len(files):
@@ -234,10 +236,10 @@ class AIA:
                 if training:
                     random.shuffle(files)
 
-            if self.samples_per_step == len(data_x_image) or not training:
-                for index in range(0, len(data_x)):
-                    data_x[index] = np.reshape(data_x[index], (len(data_x_image), self.input_width, self.input_height, self.input_channels))
-                data_x[-1] = np.reshape(data_x_side_channel, (len(data_x_side_channel), 1))
+            if self.samples_per_step == len(data_x[0]) or not training:
+                for index in range(0, len(data_x)-1):
+                    data_x[index] = np.reshape(data_x[index], (len(data_x[index]), self.input_width, self.input_height, self.input_channels))
+                data_x[-1] = np.reshape(data_x[-1], (len(data_x[-1]), 1))
                 ret_y = np.reshape(data_y, (len(data_y)))
                 yield (data_x, ret_y)
                 data_x = []
@@ -264,10 +266,14 @@ class AIA:
             """
 
             x_predictions = {}
-            for filename in files:
-                data_x_sample = np.load(file_path + filename)
+            for filename in file_names:
+                data_x_image_1 = np.load(file_path + filename)
+                data_x_image_2 = np.load(self.training_directory + self.get_prior_x_filename(filename))
                 prediction = model.predict(
-                    [data_x_sample.reshape(1, self.input_width, self.input_height, self.input_channels), np.array(self.get_prior_y(filename)).reshape(1)], verbose=0)
+                    [
+                        data_x_image_1.reshape(1, self.input_width, self.input_height, self.input_channels),
+                        data_x_image_2.reshape(1, self.input_width, self.input_height, self.input_channels),
+                        np.array(self.get_prior_y(filename)).reshape(1)], verbose=0)
                 x_predictions[filename] = [prediction, self.get_flux_delta(filename), self.get_flux(filename), self.get_prior_y(filename)]
 
             with open(outfile_path, "w") as out:

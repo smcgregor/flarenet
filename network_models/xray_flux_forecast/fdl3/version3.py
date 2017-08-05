@@ -159,15 +159,15 @@ random.seed(seed)
 input_width, input_height, input_channels = dataset_model.get_dimensions()
 image_shape = (input_width, input_height, input_channels)
 input_image = Input(shape=image_shape)
-input_side_channel = Input(shape=(1,), name="GOES_Flux_Side_Channel") # Current x-ray flux
+#input_side_channel = Input(shape=(1,), name="GOES_Flux_Side_Channel") # Current x-ray flux
 
 #validation_steps = config["validation_steps"]
 steps_per_epoch = config["steps_per_epoch"]
 samples_per_step = config["samples_per_step"] # batch size
 epochs = config["epochs"]
 x = input_image
-input_prior_image = Input(shape=image_shape)
-x_prior = input_prior_image
+#input_prior_image = Input(shape=image_shape)
+#x_prior = input_prior_image
 
 #####################################
 #     Constructing Architecture     #
@@ -177,8 +177,8 @@ print "constructing network in the Keras functional API"
 
 # Center and scale the input data
 x = aia.LogWhiten()(x)
-x_prior = aia.LogWhiten()(x_prior)
-x = concatenate([x, x_prior])
+#x_prior = aia.LogWhiten()(x_prior)
+#x = concatenate([x, x_prior])
 x = Conv2D(4, (1,1), padding='same')(x)
 x = MaxPooling2D(pool_size=(4, 4), strides=4, padding='valid')(x)
 x = Conv2D(32, (4,4), padding='valid')(x)
@@ -188,13 +188,13 @@ x = MaxPooling2D(pool_size=(4, 4), strides=2, padding='valid')(x)
 x = Conv2D(32, (2,2), padding='valid', strides=2)(x)
 x = Flatten()(x)
 x = Dropout(.5)(x)
-x = concatenate([x, input_side_channel])
+#x = concatenate([x, input_side_channel])
 x = Dense(32, activation="relu")(x)
 x = Dense(8, activation="relu")(x)
 x = Dense(4, activation="relu")(x)
 prediction = Dense(1, activation="linear")(x)
 
-forecaster = Model(inputs=[input_image, input_prior_image, input_side_channel], outputs=[prediction])
+forecaster = Model(inputs=[input_image], outputs=[prediction])
 forecaster.compile(optimizer=config["optimizer"], loss=config["loss"])
 
 # Print the netwrok summary information

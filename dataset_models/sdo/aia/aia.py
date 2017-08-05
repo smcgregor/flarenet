@@ -35,7 +35,8 @@ class AIA:
         # then load the names of the data files
         with open("config.yml", "r") as config_file:
             self.config = yaml.load(config_file)
-        
+
+        self.include_side_channels = False
         self.samples_per_step = samples_per_step  # Batch size
         self.dependent_variable = dependent_variable # Target forecast
 
@@ -59,7 +60,7 @@ class AIA:
         self.y_dict = {}
 
         # The number of image timesteps to include as the independent variable
-        self.image_count = 2
+        self.image_count = 1
         
         self.y_prior_dict = {}
         self.y_prior_filepath = self.config["aia_path"] + "y/Y_GOES_XRAY_201401_201406_00minDELAY_12minMAX.csv"
@@ -251,7 +252,7 @@ class AIA:
         else:
             return Lambda(whiten, output_shape=output_of_lambda)
 
-    def get_x_data(self, filename, directory, image_count=2, current_data=None):
+    def get_x_data(self, filename, directory, image_count=1, current_data=None, include_side_channels=False):
         """
         Get the list of data associated with the sample filename.
         @param filename {string} The name of the file which we are currently sampling.
@@ -264,8 +265,12 @@ class AIA:
         if image_count > 1:
             previous_filename = self.get_prior_x_filename(filename)
             current_data[1].append(np.load(self.training_directory + previous_filename))
-        data_x_side_channel_sample = np.array([self.get_prior_y(filename)])
-        current_data[-1].append(data_x_side_channel_sample)
+        if include_side_channels:
+            assert len(current_data) == image_count + 1
+            data_x_side_channel_sample = np.array([self.get_prior_y(filename)])
+            current_data[-1].append(data_x_side_channel_sample)
+        else:
+            assert len(current_data) == image_count
         return current_data
 
     def get_validation_step_count(self):
@@ -287,14 +292,20 @@ class AIA:
             directory = self.validation_directory            
         data_y = []
         data_x = []
-        for index in range(0, self.image_count + 1):
+        for index in range(0, self.image_count):
+            data_x.append([])
+        if self.include_side_channels:
             data_x.append([])
         shape = (self.input_width * self.input_height, self.input_channels)
         i = 0
         while 1:
             f = files[i]
             i += 1
-            self.get_x_data(f, directory, image_count=self.image_count, current_data=data_x)
+            self.get_x_data(f,
+                            directory,
+                            image_count=self.image_count,
+                            current_data=data_x,
+                            include_side_channels=self.include_side_channels)
             data_y.append(self.get_y(f))
 
             if i == len(files):
@@ -303,13 +314,19 @@ class AIA:
                     random.shuffle(files)
 
             if self.samples_per_step == len(data_x[0]) or not training:
-                for index in range(0, len(data_x)-1):
+                if self.include_side_channels:
+                    last_index = len(data_x)-1
+                    data_x[-1] = np.reshape(data_x[-1], (len(data_x[-1]), 1))
+                else:
+                    last_index = len(data_x)
+                for index in range(0, last_index):
                     data_x[index] = np.reshape(data_x[index], (len(data_x[index]), self.input_width, self.input_height, self.input_channels))
-                data_x[-1] = np.reshape(data_x[-1], (len(data_x[-1]), 1))
                 ret_y = np.reshape(data_y, (len(data_y)))
                 yield (data_x, ret_y)
                 data_x = []
-                for index in range(0, self.image_count + 1):
+                for index in range(0, self.image_count):
+                    data_x.append([])
+                if self.include_side_channels:
                     data_x.append([])
                 data_y = []
 

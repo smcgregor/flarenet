@@ -6,8 +6,8 @@ import psutil
 import random
 import math
 from keras.models import load_model
-from keras.layers import Lambda
 from keras import backend as K
+from keras.engine.topology import Layer
 
 class AIA:
     """
@@ -224,17 +224,24 @@ class AIA:
         Give a layer that will run on-GPU for centering and scaling the data.
         This makes the gradient better defined.
         """
+        assert False # Deprecated
         centering_tensor = self.get_centering_tensor(transformation=transformation)
         scaling_tensor = self.get_unit_deviation_tensor(transformation=transformation)
         def output_of_lambda(input_shape):
             return input_shape
-        def whiten(x):
+        def whiten(x, centering_tensor, scaling_tensor):
             x = K.tf.subtract(x, centering_tensor)
             x = K.tf.divide(x, scaling_tensor)
             return x
         def log_whiten(x):
             x = K.tf.log1p(x)
             return x
+
+        return Lambda(whiten,
+                      output_shape=output_of_lambda,
+                      arguments={'centering_tensor': centering_tensor, 'scaling_tensor': scaling_tensor})
+
+
         if transformation == "log":
             def whitener(x):
                 x = Lambda(log_whiten, output_shape=output_of_lambda)(x)
@@ -260,6 +267,13 @@ class AIA:
         data_x_side_channel_sample = np.array([self.get_prior_y(filename)])
         current_data[-1].append(data_x_side_channel_sample)
         return current_data
+
+    def get_validation_step_count(self):
+        """
+        Return the current count of valid validation samples. The number changes based
+        on when data is available and other factors.
+        """
+        return len(self.validation_files)
 
     def generator(self, training=True):
         """
@@ -305,8 +319,7 @@ class AIA:
         x-ray flux.
         """
 
-        custom_objects = {"centering_tensor": self.get_centering_tensor(),
-                          "scaling_tensor": self.get_unit_deviation_tensor()}
+        custom_objects = {"LogWhiten": LogWhiten}
         model = load_model(network_model_path,
                            custom_objects=custom_objects)
 
@@ -335,8 +348,13 @@ class AIA:
                 for key in keys:
                     cur = x_predictions[key]
                     out.write(key + "," + str(cur[0][0][0]) + "," + str(cur[1]) + "," + str(cur[2]) + "," + str(cur[3]) + "\n")
+
         save_performance(self.train_files[0::100], self.training_directory, network_model_path + "training.performance")
         save_performance(self.validation_files, self.validation_directory, network_model_path + "validation.performance")
+        print "#########"
+        print network_model_path + "training.performance"
+        print network_model_path + "validation.performance"
+        print "#########"
 
     def download_dataset(self):
         """
@@ -377,3 +395,46 @@ class AIA:
             print("place these data into " + self.config["aia_path"] + "validation")
             return False
         return True
+
+class LogWhiten(Layer):
+    """
+    Layer for normalizing the inputs to the neural network.
+    """
+
+    # Note: this is the incorrect vector since it is base10
+    x_mean_vector = [
+                0.04378,
+                0.3213,
+                1.611,
+                1.817,
+                1.306,
+                0.5766,
+                0.1092,
+                0.8212
+    ]
+
+    # Note: this is the incorrect vector since it is base10
+    x_standard_deviation_vector = [
+                0.1622,
+                0.386,
+                0.748,
+                0.74238,
+                0.71,
+                0.5592,
+                0.2605,
+                0.7978
+    ]
+
+    def __init__(self, **kwargs):
+        self.scaling_tensor = np.array(self.x_standard_deviation_vector).reshape((1,1,1,8))
+        self.centering_tensor = np.array(self.x_mean_vector).reshape((1,1,1,8))
+        super(LogWhiten, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        super(LogWhiten, self).build(input_shape)  # Be sure to call this somewhere!
+
+    def call(self, x):
+        x = K.tf.log1p(x)
+        x = K.tf.subtract(x, self.centering_tensor)
+        x = K.tf.divide(x, self.scaling_tensor)
+        return x

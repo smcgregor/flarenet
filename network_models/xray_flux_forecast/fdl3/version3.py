@@ -148,7 +148,7 @@ print "initializing data"
 with open("config.yml", "r") as config_file:
     config = yaml.load(config_file)
 
-aia = aia.AIA(config["samples_per_step"])
+dataset_model = aia.AIA(config["samples_per_step"])
 
 #####################################
 #         SPECIFYING DATA           #
@@ -156,16 +156,17 @@ aia = aia.AIA(config["samples_per_step"])
 
 seed = 0
 random.seed(seed)
-input_width, input_height, input_channels = aia.get_dimensions()
-input_image = Input(shape=(input_width, input_height, input_channels))
+input_width, input_height, input_channels = dataset_model.get_dimensions()
+image_shape = (input_width, input_height, input_channels)
+input_image = Input(shape=image_shape)
 input_side_channel = Input(shape=(1,), name="GOES_Flux_Side_Channel") # Current x-ray flux
 
-validation_steps = config["validation_steps"]
+#validation_steps = config["validation_steps"]
 steps_per_epoch = config["steps_per_epoch"]
 samples_per_step = config["samples_per_step"] # batch size
 epochs = config["epochs"]
 x = input_image
-input_prior_image = Input(shape=(input_width, input_height, input_channels))
+input_prior_image = Input(shape=image_shape)
 x_prior = input_prior_image
 
 #####################################
@@ -175,8 +176,8 @@ x_prior = input_prior_image
 print "constructing network in the Keras functional API"
 
 # Center and scale the input data
-x = aia.get_whitening_layer(transformation="log")(x)
-x_prior = aia.get_whitening_layer(transformation="log")(x_prior)
+x = aia.LogWhiten()(x)
+x_prior = aia.LogWhiten()(x_prior)
 x = concatenate([x, x_prior])
 x = Conv2D(4, (1,1), padding='same')(x)
 x = MaxPooling2D(pool_size=(4, 4), strides=4, padding='valid')(x)
@@ -228,11 +229,11 @@ if not os.path.exists(model_output_path):
     os.makedirs(model_output_path)
 model_checkpoint = ModelCheckpoint(model_output_path)
 
-history = forecaster.fit_generator(aia.generator(training=True),
+history = forecaster.fit_generator(dataset_model.generator(training=True),
                                    steps_per_epoch,
                                    epochs=epochs,
-                                   validation_data=aia.generator(training=False),
-                                   validation_steps=validation_steps,
+                                   validation_data=dataset_model.generator(training=False),
+                                   validation_steps=dataset_model.get_validation_step_count(),
                                    callbacks=[tensorboard_callbacks, training_callbacks, model_checkpoint],
                                    #nb_worker=2
 )

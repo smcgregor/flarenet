@@ -1,12 +1,11 @@
-import yaml
 import os
 import numpy as np
 from datetime import timedelta, datetime
 import random
 import math
+import dataset_models.dataset
 
-
-class AIA:
+class AIA(dataset_models.dataset.Dataset):
     """
     A class for managing the download
     and interface of the AIA data.
@@ -27,11 +26,7 @@ class AIA:
         @param catch {str} the time over which we find the maximum x-ray flux value.
         "12min","24min","36min","01hr","24hr"
         """
-
-        # Load the configuration file indicating where the files are stored,
-        # then load the names of the data files
-        with open("config.yml", "r") as config_file:
-            self.config = yaml.load(config_file)
+        super(AIA, self).__init__()
         
         self.samples_per_step = samples_per_step  # Batch size
         self.dependent_variable = dependent_variable # Target forecast
@@ -46,6 +41,7 @@ class AIA:
         # Standardize the random number generator to consistent shuffles
         random.seed(0)
 
+        # Ensure the dataset is downloaded
         assert(self.is_downloaded())
         self.training_directory = self.config["aia_path"] + "training/"
         self.validation_directory = self.config["aia_path"] + "validation/"
@@ -57,7 +53,8 @@ class AIA:
 
         # The number of image timesteps to include as the independent variable
         self.image_count = 2
-        
+
+        # Load the y values and the prior y values
         self.y_prior_dict = {}
         self.y_prior_filepath = self.config["aia_path"] + "y/Y_GOES_XRAY_201401_201406_00minDELAY_12minMAX.csv"
         with open(self.y_prior_filepath, "rb") as f:
@@ -71,108 +68,13 @@ class AIA:
                 split_y = line.split(",")
                 cur_y = float(split_y[1])
                 self.y_dict[split_y[0]] = cur_y
-        self.clean_data()
+        self._clean_data()
 
     def get_dimensions(self):
         """
         Helper function returning the dimensions of the inputs.
         """
         return (self.input_width, self.input_height, self.input_channels)
-
-    def get_flux_delta(self, filename):
-        """
-        Return the change in the flux value from the last time step to this one.
-        """
-        k = filename[3:11] + filename[11:16]
-        future = self.y_dict[k]
-        current = self.get_prior_y(filename)
-        return future - current
-
-    def get_flux(self, filename):
-        """
-        Return the flux value for the current time step.
-        """
-        k = filename[3:11] + filename[11:16]
-        future = self.y_dict[k]
-        return future
-
-    def get_y(self, filename):
-        """
-        Get the true forecast result for the current filename.
-        """
-        if self.dependent_variable == "flux delta":
-            return self.get_flux_delta(filename)
-        elif self.dependent_variable == "forecast":
-            return self.get_flux(filename)
-        else:
-            assert False # There are currently no other valid dependent variables
-            return None
-
-    def get_prior_timestep_string(self, filename):
-        """
-        Get the filename of the previous timestep
-        """
-        datetime_format = '%Y%m%d_%H%M'
-        datetime_object = datetime.strptime(filename[3:11] + filename[11:16], datetime_format)
-        td = timedelta(minutes=-12)
-        prior_datetime_object = datetime_object + td
-        prior_datetime_string = datetime.strftime(prior_datetime_object, datetime_format)
-        return prior_datetime_string
-
-    def get_prior_x_filename(self, filename):
-        identifier = self.get_prior_timestep_string(filename)
-        return "AIA" + identifier + "_08chnls.dat"
-
-    def get_prior_y(self, filename):
-        """
-        Get the y value for the prior time step. This will
-        generally be used so we can capture the delta in the
-        prediction value. We also feed it into the neural network
-        as side information.
-        """
-        prior_datetime_string = self.get_prior_timestep_string(filename)
-        return self.y_prior_dict[prior_datetime_string]
-
-    def clean_data(self):
-        """
-        Remove all samples that lack the required y value.
-        """
-        starting_training_count = len(self.train_files)
-        starting_validation_count = len(self.validation_files)
-        def filter_closure(training):
-            def filter_files(filename):
-                try:
-                    self.get_prior_y(filename)
-                    self.get_y(filename)
-                    prior_x_file = self.get_prior_x_filename(filename)
-                except (KeyError, ValueError) as e:
-                    return False
-                if prior_x_file not in self.train_files:
-                    return False
-                else:
-                    return True
-            return filter_files
-        self.train_files = filter(filter_closure(True), self.train_files)
-        self.validation_files = filter(filter_closure(False), self.validation_files)
-        print "Training " + str(starting_training_count) + "-> " + str(len(self.train_files))
-        print "Validation " + str(starting_validation_count) + "-> " + str(len(self.validation_files))
-
-    def get_x_data(self, filename, directory, image_count=2, current_data=None):
-        """
-        Get the list of data associated with the sample filename.
-        @param filename {string} The name of the file which we are currently sampling.
-        @param directory {string} The location in which we will look for the file.
-        @param image_count {int} The total number of timestep images to be composited.
-        @param current_data {list} The data that we will append to.
-        todo: make this better
-        """
-        current_data[0].append(np.load(directory + filename))
-        if image_count > 1:
-            previous_filename = self.get_prior_x_filename(filename)
-            current_data[1].append(np.load(self.training_directory + previous_filename))
-        data_x_side_channel_sample = np.array([self.get_prior_y(filename)])
-        current_data[-1].append(data_x_side_channel_sample)
-        return current_data
 
     def get_validation_step_count(self):
         """
@@ -195,8 +97,8 @@ class AIA:
             data_x.append([])
         shape = (self.input_width * self.input_height, self.input_channels)
         for f in files:
-            self.get_x_data(f, directory, image_count=self.image_count, current_data=data_x)
-            data_y.append(self.get_y(f))
+            self._get_x_data(f, directory, image_count=self.image_count, current_data=data_x)
+            data_y.append(self._get_y(f))
         for index in range(0, len(data_x)-1):
             data_x[index] = np.reshape(data_x[index], (len(data_x[index]), self.input_width, self.input_height, self.input_channels)).astype('float32')
         data_x[-1] = np.reshape(data_x[-1], (len(data_x[-1]), 1)).astype('float32')
@@ -221,14 +123,14 @@ class AIA:
         while 1:
             f = files[i]
             i += 1
-            self.get_x_data(f, directory, image_count=self.image_count, current_data=data_x)
-            data_y.append(self.get_y(f))
+            self._get_x_data(f, directory, image_count=self.image_count, current_data=data_x)
+            data_y.append(self._get_y(f))
 
             if i == len(files):
                 i = 0
                 random.shuffle(files)
 
-            if self.samples_per_step == len(data_x[0]) or not training:
+            if self.samples_per_step == len(data_x[0]):
                 for index in range(0, len(data_x)-1):
                     data_x[index] = np.reshape(data_x[index], (len(data_x[index]), self.input_width, self.input_height, self.input_channels)).astype('float32')
                 data_x[-1] = np.reshape(data_x[-1], (len(data_x[-1]), 1)).astype('float32')
@@ -260,13 +162,13 @@ class AIA:
             x_predictions = {}
             for filename in file_names:
                 data_x_image_1 = np.load(file_path + filename)
-                data_x_image_2 = np.load(self.training_directory + self.get_prior_x_filename(filename))
+                data_x_image_2 = np.load(self.training_directory + self._get_prior_x_filename(filename))
                 prediction = model.predict(
                     [
                         data_x_image_1.reshape(1, self.input_width, self.input_height, self.input_channels),
                         data_x_image_2.reshape(1, self.input_width, self.input_height, self.input_channels),
-                        np.array(self.get_prior_y(filename)).reshape(1)], verbose=0)
-                x_predictions[filename] = [prediction, self.get_flux_delta(filename), self.get_flux(filename), self.get_prior_y(filename)]
+                        np.array(self._get_prior_y(filename)).reshape(1)], verbose=0)
+                x_predictions[filename] = [prediction, self._get_flux_delta(filename), self._get_flux(filename), self._get_prior_y(filename)]
 
             with open(outfile_path, "w") as out:
                 out.write("datetime, prediction, true y delta, true y, true prior y\n")
@@ -288,7 +190,7 @@ class AIA:
         Download the datasets expected by this data adapter to the directory
         specified by the config.yml file.
         """
-        assert False, "This has not yet been implemented"
+        raise NotImplementedError
 
     def is_downloaded(self):
         """
@@ -322,3 +224,98 @@ class AIA:
             print("place these data into " + self.config["aia_path"] + "validation")
             return False
         return True
+
+    def _get_flux_delta(self, filename):
+        """
+        Return the change in the flux value from the last time step to this one.
+        """
+        k = filename[3:11] + filename[11:16]
+        future = self.y_dict[k]
+        current = self._get_prior_y(filename)
+        return future - current
+
+    def _get_flux(self, filename):
+        """
+        Return the flux value for the current time step.
+        """
+        k = filename[3:11] + filename[11:16]
+        future = self.y_dict[k]
+        return future
+
+    def _get_y(self, filename):
+        """
+        Get the true forecast result for the current filename.
+        """
+        if self.dependent_variable == "flux delta":
+            return self._get_flux_delta(filename)
+        elif self.dependent_variable == "forecast":
+            return self._get_flux(filename)
+        else:
+            assert False # There are currently no other valid dependent variables
+            return None
+
+    def _get_prior_timestep_string(self, filename):
+        """
+        Get the filename of the previous timestep
+        """
+        datetime_format = '%Y%m%d_%H%M'
+        datetime_object = datetime.strptime(filename[3:11] + filename[11:16], datetime_format)
+        td = timedelta(minutes=-12)
+        prior_datetime_object = datetime_object + td
+        prior_datetime_string = datetime.strftime(prior_datetime_object, datetime_format)
+        return prior_datetime_string
+
+    def _get_prior_x_filename(self, filename):
+        identifier = self._get_prior_timestep_string(filename)
+        return "AIA" + identifier + "_08chnls.dat"
+
+    def _get_prior_y(self, filename):
+        """
+        Get the y value for the prior time step. This will
+        generally be used so we can capture the delta in the
+        prediction value. We also feed it into the neural network
+        as side information.
+        """
+        prior_datetime_string = self._get_prior_timestep_string(filename)
+        return self.y_prior_dict[prior_datetime_string]
+
+    def _clean_data(self):
+        """
+        Remove all samples that lack the required y value.
+        """
+        starting_training_count = len(self.train_files)
+        starting_validation_count = len(self.validation_files)
+        def filter_closure(training):
+            def filter_files(filename):
+                try:
+                    self._get_prior_y(filename)
+                    self._get_y(filename)
+                    prior_x_file = self._get_prior_x_filename(filename)
+                except (KeyError, ValueError) as e:
+                    return False
+                if prior_x_file not in self.train_files:
+                    return False
+                else:
+                    return True
+            return filter_files
+        self.train_files = filter(filter_closure(True), self.train_files)
+        self.validation_files = filter(filter_closure(False), self.validation_files)
+        print "Training " + str(starting_training_count) + "-> " + str(len(self.train_files))
+        print "Validation " + str(starting_validation_count) + "-> " + str(len(self.validation_files))
+
+    def _get_x_data(self, filename, directory, image_count=2, current_data=None):
+        """
+        Get the list of data associated with the sample filename.
+        @param filename {string} The name of the file which we are currently sampling.
+        @param directory {string} The location in which we will look for the file.
+        @param image_count {int} The total number of timestep images to be composited.
+        @param current_data {list} The data that we will append to.
+        todo: make this better
+        """
+        current_data[0].append(np.load(directory + filename))
+        if image_count > 1:
+            previous_filename = self._get_prior_x_filename(filename)
+            current_data[1].append(np.load(self.training_directory + previous_filename))
+        data_x_side_channel_sample = np.array([self._get_prior_y(filename)])
+        current_data[-1].append(data_x_side_channel_sample)
+        return current_data

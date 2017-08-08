@@ -108,13 +108,11 @@ class AIA(dataset_models.dataset.Dataset):
         directory = self.validation_directory
         data_y = []
         data_x = []
-        for index in range(0, self.aia_image_count + 1):
-            data_x.append([])
-        shape = (self.input_width * self.input_height, self.input_channels)
         for f in files:
-            self._get_x_data(f, directory, aia_image_count=self.aia_image_count, current_data=data_x)
+            sample = self._get_x_data(f, directory, aia_image_count=self.aia_image_count)
+            self._sample_append(data_x, sample)
             data_y.append(self._get_y(f))
-        for index in range(0, len(data_x)-1):
+        for index in range(0, self.aia_image_count):
             data_x[index] = np.reshape(data_x[index], (len(data_x[index]), self.input_width, self.input_height, self.input_channels)).astype('float32')
         data_x[-1] = np.reshape(data_x[-1], (len(data_x[-1]), 1)).astype('float32')
         ret_y = np.reshape(data_y, (len(data_y)))
@@ -131,14 +129,12 @@ class AIA(dataset_models.dataset.Dataset):
         directory = self.training_directory
         data_y = []
         data_x = []
-        for index in range(0, self.aia_image_count + 1):
-            data_x.append([])
-        shape = (self.input_width * self.input_height, self.input_channels)
         i = 0
         while 1:
             f = files[i]
             i += 1
-            self._get_x_data(f, directory, aia_image_count=self.aia_image_count, current_data=data_x)
+            sample = self._get_x_data(f, directory, aia_image_count=self.aia_image_count)
+            self._sample_append(data_x, sample)
             data_y.append(self._get_y(f))
 
             if i == len(files):
@@ -146,14 +142,12 @@ class AIA(dataset_models.dataset.Dataset):
                 random.shuffle(files)
 
             if self.samples_per_step == len(data_x[0]):
-                for index in range(0, len(data_x)-1):
+                for index in range(0, self.aia_image_count):
                     data_x[index] = np.reshape(data_x[index], (len(data_x[index]), self.input_width, self.input_height, self.input_channels)).astype('float32')
                 data_x[-1] = np.reshape(data_x[-1], (len(data_x[-1]), 1)).astype('float32')
                 ret_y = np.reshape(data_y, (len(data_y)))
                 yield (data_x, ret_y)
                 data_x = []
-                for index in range(0, self.aia_image_count + 1):
-                    data_x.append([])
                 data_y = []
 
     def evaluate_network(self, network_model_path):
@@ -239,6 +233,17 @@ class AIA(dataset_models.dataset.Dataset):
             print("place these data into " + self.config["aia_path"] + "validation")
             return False
         return True
+
+    def _sample_append(self, data_x, sample):
+        """
+        Append a sample to the current dataset.
+        """
+        if not data_x:
+            for _ in sample:
+                data_x.append([])
+        for idx, part in enumerate(sample):
+            data_x[idx].append(sample[idx])
+        return
 
     def _get_flux_delta(self, filename):
         """
@@ -350,7 +355,7 @@ class AIA(dataset_models.dataset.Dataset):
         """
         return np.array([self._get_prior_y(filename)])
 
-    def _get_x_data(self, filename, directory, aia_image_count=2, current_data=None):
+    def _get_x_data(self, filename, directory, aia_image_count=2):
         """
         Get the list of data associated with the sample filename.
         @param filename {string} The name of the file which we are currently sampling.
@@ -359,11 +364,12 @@ class AIA(dataset_models.dataset.Dataset):
         @param current_data {list} The data that we will append to.
         todo: make this better
         """
+        current_data = []
         for index in range(0, aia_image_count):
             if index == 1:
                 directory = self.training_directory
-            current_data[index].append(self._get_aia_image(filename, directory, previous=index))
+            current_data.append(self._get_aia_image(filename, directory, previous=index))
         if self.side_channels:
             data_x_side_channel_sample = self._get_side_channel_data(filename)
-            current_data[-1].append(data_x_side_channel_sample)
+            current_data.append(data_x_side_channel_sample)
         return current_data

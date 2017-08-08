@@ -11,7 +11,13 @@ class AIA(dataset_models.dataset.Dataset):
     and interface of the AIA data.
     """
 
-    def __init__(self, samples_per_step=32, dependent_variable="flux delta", lag="00min", catch="24hr"):
+    def __init__(self,
+                 samples_per_step=32,
+                 dependent_variable="flux delta",
+                 lag="00min",
+                 catch="24hr",
+                 aia_image_count=2,
+                 side_channels=["current_goes", "hand_tailored"]):
         """
         Get a directory listing of the AIA data and load all the filenames
         into memory. We will loop over these filenames while training or
@@ -25,11 +31,20 @@ class AIA(dataset_models.dataset.Dataset):
         "00min","12min","24min","36min","01hr","24hr"
         @param catch {str} the time over which we find the maximum x-ray flux value.
         "12min","24min","36min","01hr","24hr"
+        @param aia_image_count {int} The number of images from AIA to concatenate together to
+        form a single image. The minimum value is currently 1 and the maximum value is defined
+        by your hardware.
+        @param side_channels {list[str]} A list of the side channels to include in
+        the independent variable list. These currently include the currently measured GOES
+        reading for x-ray flux, and a complete set of hand tailored features applied in earlier
+        works.
         """
         super(AIA, self).__init__()
         
         self.samples_per_step = samples_per_step  # Batch size
         self.dependent_variable = dependent_variable # Target forecast
+
+        self.side_channels = side_channels
 
         self.y_filepath = self.config["aia_path"] + "y/Y_GOES_XRAY_201401_201406_" + lag + "DELAY_" + catch + "MAX.csv"
         
@@ -52,7 +67,7 @@ class AIA(dataset_models.dataset.Dataset):
         self.y_dict = {}
 
         # The number of image timesteps to include as the independent variable
-        self.image_count = 2
+        self.aia_image_count = aia_image_count
 
         # Load the y values and the prior y values
         self.y_prior_dict = {}
@@ -93,11 +108,11 @@ class AIA(dataset_models.dataset.Dataset):
         directory = self.validation_directory
         data_y = []
         data_x = []
-        for index in range(0, self.image_count + 1):
+        for index in range(0, self.aia_image_count + 1):
             data_x.append([])
         shape = (self.input_width * self.input_height, self.input_channels)
         for f in files:
-            self._get_x_data(f, directory, image_count=self.image_count, current_data=data_x)
+            self._get_x_data(f, directory, aia_image_count=self.aia_image_count, current_data=data_x)
             data_y.append(self._get_y(f))
         for index in range(0, len(data_x)-1):
             data_x[index] = np.reshape(data_x[index], (len(data_x[index]), self.input_width, self.input_height, self.input_channels)).astype('float32')
@@ -116,14 +131,14 @@ class AIA(dataset_models.dataset.Dataset):
         directory = self.training_directory
         data_y = []
         data_x = []
-        for index in range(0, self.image_count + 1):
+        for index in range(0, self.aia_image_count + 1):
             data_x.append([])
         shape = (self.input_width * self.input_height, self.input_channels)
         i = 0
         while 1:
             f = files[i]
             i += 1
-            self._get_x_data(f, directory, image_count=self.image_count, current_data=data_x)
+            self._get_x_data(f, directory, aia_image_count=self.aia_image_count, current_data=data_x)
             data_y.append(self._get_y(f))
 
             if i == len(files):
@@ -137,7 +152,7 @@ class AIA(dataset_models.dataset.Dataset):
                 ret_y = np.reshape(data_y, (len(data_y)))
                 yield (data_x, ret_y)
                 data_x = []
-                for index in range(0, self.image_count + 1):
+                for index in range(0, self.aia_image_count + 1):
                     data_x.append([])
                 data_y = []
 
@@ -303,19 +318,52 @@ class AIA(dataset_models.dataset.Dataset):
         print "Training " + str(starting_training_count) + "-> " + str(len(self.train_files))
         print "Validation " + str(starting_validation_count) + "-> " + str(len(self.validation_files))
 
-    def _get_x_data(self, filename, directory, image_count=2, current_data=None):
+    def _get_aia_image(self, filename, directory, previous=0):
+        """
+        Get the requested AIA image, or an image from a previous
+        step as indicated by the previous parameter.
+        @param filename {str} The name of the current AIA image.
+        @param directory {str} The path to the directory where the image will be located.
+        @param previous {int} How many steps back we will look for an image.
+        Note: it is currently your responsibility to have the clean_data()
+        function prevent requests to this function for data that does not
+        exist.
+        todo: improve this function. It will always be called many times in successesion so it isn't
+              necessary to keep finding older files by walking back through the history.
+        """
+        assert previous >= 0, "previous should be a non-negative integer, it is currently " + previous
+        assert previous < 100, "previous should not be a very large integer, it is currently " + previous
+        if previous == 0:
+            return np.load(directory + filename)
+        while True:
+            previous_filename = self._get_prior_x_filename(filename)
+            previous -= 1
+            if previous == 0:
+                return np.load(directory + previous_filename)
+
+    def _get_side_channel_data(self, filename):
+        """
+        Get the side channel information defined for the current filename.
+        todo: this function has slightly different semantics than the other
+              data accessor. It decided what to return based on an instance
+              variable instead of a parameter. I should standardize.
+        """
+        return np.array([self._get_prior_y(filename)])
+
+    def _get_x_data(self, filename, directory, aia_image_count=2, current_data=None):
         """
         Get the list of data associated with the sample filename.
         @param filename {string} The name of the file which we are currently sampling.
         @param directory {string} The location in which we will look for the file.
-        @param image_count {int} The total number of timestep images to be composited.
+        @param aia_image_count {int} The total number of timestep images to be composited.
         @param current_data {list} The data that we will append to.
         todo: make this better
         """
-        current_data[0].append(np.load(directory + filename))
-        if image_count > 1:
-            previous_filename = self._get_prior_x_filename(filename)
-            current_data[1].append(np.load(self.training_directory + previous_filename))
-        data_x_side_channel_sample = np.array([self._get_prior_y(filename)])
-        current_data[-1].append(data_x_side_channel_sample)
+        for index in range(0, aia_image_count):
+            if index == 1:
+                directory = self.training_directory
+            current_data[index].append(self._get_aia_image(filename, directory, previous=index))
+        if self.side_channels:
+            data_x_side_channel_sample = self._get_side_channel_data(filename)
+            current_data[-1].append(data_x_side_channel_sample)
         return current_data

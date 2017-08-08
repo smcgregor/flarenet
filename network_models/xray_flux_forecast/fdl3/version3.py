@@ -63,7 +63,7 @@ import argparse
 
 # Libraries packaged with this repository
 from network_models.training_callbacks import TrainingCallbacks
-from dataset_models.sdo.aia import aia
+from dataset_models.sdo.aia import aia, layers
 from tools import tools
 
 from keras.optimizers import adam
@@ -229,13 +229,13 @@ if not os.path.exists(model_output_path):
     os.makedirs(model_output_path)
 model_checkpoint = ModelCheckpoint(model_output_path)
 
-history = forecaster.fit_generator(dataset_model.generator(training=True),
+history = forecaster.fit_generator(dataset_model.training_generator(),
                                    steps_per_epoch,
+                                   max_queue_size=10,
                                    epochs=epochs,
-                                   validation_data=dataset_model.generator(training=False),
-                                   validation_steps=dataset_model.get_validation_step_count(),
+                                   validation_data=dataset_model.get_validation_data(),
                                    callbacks=[tensorboard_callbacks, training_callbacks, model_checkpoint],
-                                   #nb_worker=2
+                                   workers=1,
 )
 
 # Loss on the training set

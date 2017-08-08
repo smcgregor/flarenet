@@ -2,12 +2,9 @@ import yaml
 import os
 import numpy as np
 from datetime import timedelta, datetime
-import psutil
 import random
 import math
-from keras.models import load_model
-from keras import backend as K
-from keras.engine.topology import Layer
+
 
 class AIA:
     """
@@ -184,16 +181,37 @@ class AIA:
         """
         return len(self.validation_files)
 
-    def generator(self, training=True):
+    def get_validation_data(self):
         """
-        Generate samples
+        Load samples for validation dataset. This will load the entire validation dataset
+        into memory. If you have a very large validation dataset you should likely
+        refactor this to be a data generator that will stage the data into memory incrementally.
         """
-        if training:
-            files = self.train_files
-            directory = self.training_directory
-        else:
-            files = self.validation_files
-            directory = self.validation_directory            
+        files = self.validation_files
+        directory = self.validation_directory
+        data_y = []
+        data_x = []
+        for index in range(0, self.image_count + 1):
+            data_x.append([])
+        shape = (self.input_width * self.input_height, self.input_channels)
+        for f in files:
+            self.get_x_data(f, directory, image_count=self.image_count, current_data=data_x)
+            data_y.append(self.get_y(f))
+        for index in range(0, len(data_x)-1):
+            data_x[index] = np.reshape(data_x[index], (len(data_x[index]), self.input_width, self.input_height, self.input_channels)).astype('float32')
+        data_x[-1] = np.reshape(data_x[-1], (len(data_x[-1]), 1)).astype('float32')
+        ret_y = np.reshape(data_y, (len(data_y)))
+        return (data_x, ret_y)
+
+    def training_generator(self):
+        """
+        Generate samples for training by selecting a random subsample of
+        files located in the training directory. The training data will
+        then be collected with the additional timesteps of images
+        and side channel information.
+        """
+        files = self.train_files
+        directory = self.training_directory
         data_y = []
         data_x = []
         for index in range(0, self.image_count + 1):
@@ -208,13 +226,12 @@ class AIA:
 
             if i == len(files):
                 i = 0
-                if training:
-                    random.shuffle(files)
+                random.shuffle(files)
 
             if self.samples_per_step == len(data_x[0]) or not training:
                 for index in range(0, len(data_x)-1):
-                    data_x[index] = np.reshape(data_x[index], (len(data_x[index]), self.input_width, self.input_height, self.input_channels))
-                data_x[-1] = np.reshape(data_x[-1], (len(data_x[-1]), 1))
+                    data_x[index] = np.reshape(data_x[index], (len(data_x[index]), self.input_width, self.input_height, self.input_channels)).astype('float32')
+                data_x[-1] = np.reshape(data_x[-1], (len(data_x[-1]), 1)).astype('float32')
                 ret_y = np.reshape(data_y, (len(data_y)))
                 yield (data_x, ret_y)
                 data_x = []
@@ -227,6 +244,7 @@ class AIA:
         Generate a CSV file with the true and the predicted values for
         x-ray flux.
         """
+        from keras.models import load_model
 
         custom_objects = {"LogWhiten": LogWhiten}
         model = load_model(network_model_path,
@@ -304,46 +322,3 @@ class AIA:
             print("place these data into " + self.config["aia_path"] + "validation")
             return False
         return True
-
-class LogWhiten(Layer):
-    """
-    Layer for normalizing the inputs to the neural network.
-    """
-
-    # Note: this is the incorrect vector since it is base10
-    x_mean_vector = [
-                0.04378,
-                0.3213,
-                1.611,
-                1.817,
-                1.306,
-                0.5766,
-                0.1092,
-                0.8212
-    ]
-
-    # Note: this is the incorrect vector since it is base10
-    x_standard_deviation_vector = [
-                0.1622,
-                0.386,
-                0.748,
-                0.74238,
-                0.71,
-                0.5592,
-                0.2605,
-                0.7978
-    ]
-
-    def __init__(self, **kwargs):
-        self.scaling_tensor = np.array(self.x_standard_deviation_vector).reshape((1,1,1,8))
-        self.centering_tensor = np.array(self.x_mean_vector).reshape((1,1,1,8))
-        super(LogWhiten, self).__init__(**kwargs)
-
-    def build(self, input_shape):
-        super(LogWhiten, self).build(input_shape)  # Be sure to call this somewhere!
-
-    def call(self, x):
-        x = K.tf.log1p(x)
-        x = K.tf.subtract(x, self.centering_tensor)
-        x = K.tf.divide(x, self.scaling_tensor)
-        return x

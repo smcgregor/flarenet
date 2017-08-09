@@ -130,6 +130,9 @@ args = parser.parse_args()
 #        CONFIGURE OUTPUTS          #
 #####################################
 
+# How many images will be composited
+aia_image_count = 3
+
 # Set the paths
 model_directory_path = "network_models/xray_flux_forecast/fdl2/trained_models/"
 abspath = os.path.abspath(__file__)
@@ -148,7 +151,7 @@ print "initializing data"
 with open("config.yml", "r") as config_file:
     config = yaml.load(config_file)
 
-dataset_model = aia.AIA(config["samples_per_step"])
+dataset_model = aia.AIA(config["samples_per_step"], side_channels=["current_goes"], aia_image_count=aia_image_count)
 
 #####################################
 #         SPECIFYING DATA           #
@@ -157,17 +160,20 @@ dataset_model = aia.AIA(config["samples_per_step"])
 seed = 0
 random.seed(seed)
 input_width, input_height, input_channels = dataset_model.get_dimensions()
-image_shape = (input_width, input_height, input_channels)
-input_image = Input(shape=image_shape)
-input_side_channel = Input(shape=(1,), name="GOES_Flux_Side_Channel") # Current x-ray flux
 
-#validation_steps = config["validation_steps"]
+image_shape = (input_width, input_height, input_channels)
+input_images = []
+all_inputs = []
+for _ in range(0, aia_image_count):
+    image = Input(shape=image_shape)
+    input_images.append(image)
+    all_inputs.append(image)
+input_side_channel = Input(shape=(1,), name="GOES_Flux_Side_Channel") # Current x-ray flux
+all_inputs.append(input_side_channel)
+
 steps_per_epoch = config["steps_per_epoch"]
 samples_per_step = config["samples_per_step"] # batch size
 epochs = config["epochs"]
-x = input_image
-input_prior_image = Input(shape=image_shape)
-x_prior = input_prior_image
 
 #####################################
 #     Constructing Architecture     #
@@ -176,11 +182,11 @@ x_prior = input_prior_image
 print "constructing network in the Keras functional API"
 
 # Center and scale the input data
-x = aia.LogWhiten()(x)
-x_prior = aia.LogWhiten()(x_prior)
-x = concatenate([x, x_prior])
-x = Conv2D(4, (1,1), padding='same')(x)
-x = MaxPooling2D(pool_size=(4, 4), strides=4, padding='valid')(x)
+for idx, input_image in enumerate(input_images):
+    input_images[idx] = layers.LogWhiten()(input_image)
+x = concatenate(input_images)
+x = Conv2D(12, (1,1), padding='same')(x)
+x = MaxPooling2D(pool_size=(4, 4), strides=2, padding='valid')(x)
 x = Conv2D(32, (4,4), padding='valid')(x)
 x = MaxPooling2D(pool_size=(4, 4), strides=4, padding='valid')(x)
 x = Conv2D(32, (4,4), padding='valid', strides=4)(x)

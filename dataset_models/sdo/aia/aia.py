@@ -104,19 +104,13 @@ class AIA(dataset_models.dataset.Dataset):
         into memory. If you have a very large validation dataset you should likely
         refactor this to be a data generator that will stage the data into memory incrementally.
         """
-        files = self.validation_files
-        directory = self.validation_directory
         data_y = []
         data_x = []
-        for f in files:
-            sample = self._get_x_data(f, directory, aia_image_count=self.aia_image_count)
+        for f in self.validation_files:
+            sample = self._get_x_data(f, self.validation_directory, aia_image_count=self.aia_image_count)
             self._sample_append(data_x, sample)
             data_y.append(self._get_y(f))
-        for index in range(0, self.aia_image_count):
-            data_x[index] = np.reshape(data_x[index], (len(data_x[index]), self.input_width, self.input_height, self.input_channels)).astype('float32')
-        data_x[-1] = np.reshape(data_x[-1], (len(data_x[-1]), 1)).astype('float32')
-        ret_y = np.reshape(data_y, (len(data_y)))
-        return (data_x, ret_y)
+        return self._finalize_dataset(data_x, data_y)
 
     def training_generator(self):
         """
@@ -142,11 +136,7 @@ class AIA(dataset_models.dataset.Dataset):
                 random.shuffle(files)
 
             if self.samples_per_step == len(data_x[0]):
-                for index in range(0, self.aia_image_count):
-                    data_x[index] = np.reshape(data_x[index], (len(data_x[index]), self.input_width, self.input_height, self.input_channels)).astype('float32')
-                data_x[-1] = np.reshape(data_x[-1], (len(data_x[-1]), 1)).astype('float32')
-                ret_y = np.reshape(data_y, (len(data_y)))
-                yield (data_x, ret_y)
+                yield self._finalize_dataset(data_x, data_y)
                 data_x = []
                 data_y = []
 
@@ -233,6 +223,19 @@ class AIA(dataset_models.dataset.Dataset):
             print("place these data into " + self.config["aia_path"] + "validation")
             return False
         return True
+
+    def _finalize_dataset(self, data_x, data_y):
+        """
+        Reshape the dataset to be appropriate for training and validation.
+        """
+        for index in range(0, self.aia_image_count):
+            data_x[index] = np.reshape(data_x[index], (len(data_x[index]), self.input_width, self.input_height, self.input_channels)).astype('float32')
+        if "current_goes" in self.side_channels:
+            data_x[-1] = np.reshape(data_x[-1], (len(data_x[-1]), 1)).astype('float32')
+        if "hand_tailored" in self.side_channels:
+            raise NotImplementedError
+        ret_y = np.reshape(data_y, (len(data_y)))
+        return (data_x, ret_y)
 
     def _sample_append(self, data_x, sample):
         """
@@ -353,7 +356,10 @@ class AIA(dataset_models.dataset.Dataset):
               data accessor. It decided what to return based on an instance
               variable instead of a parameter. I should standardize.
         """
-        return np.array([self._get_prior_y(filename)])
+        if "current_goes" in self.side_channels:
+            return np.array([self._get_prior_y(filename)])
+        if "hand_tailored" in self.side_channels:
+            raise NotImplementedError
 
     def _get_x_data(self, filename, directory, aia_image_count=2):
         """
@@ -362,7 +368,6 @@ class AIA(dataset_models.dataset.Dataset):
         @param directory {string} The location in which we will look for the file.
         @param aia_image_count {int} The total number of timestep images to be composited.
         @param current_data {list} The data that we will append to.
-        todo: make this better
         """
         current_data = []
         for index in range(0, aia_image_count):

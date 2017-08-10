@@ -131,7 +131,7 @@ args = parser.parse_args()
 #####################################
 
 # How many images will be composited
-aia_image_count = 3
+aia_image_count = 1
 
 # Set the paths
 model_directory_path = "network_models/xray_flux_forecast/fdl2/trained_models/"

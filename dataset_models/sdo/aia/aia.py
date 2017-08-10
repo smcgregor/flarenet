@@ -177,11 +177,12 @@ class AIA(dataset_models.dataset.Dataset):
                     cur = x_predictions[key]
                     out.write(key + "," + str(cur[0][0][0]) + "," + str(cur[1]) + "," + str(cur[2]) + "," + str(cur[3]) + "\n")
 
-        save_performance(self.train_files[0::100], self.training_directory, network_model_path + "training.performance")
-        save_performance(self.validation_files, self.validation_directory, network_model_path + "validation.performance")
+        save_performance(self.train_files[0::100], self.training_directory, network_model_path + ".training.performance")
+        save_performance(self.validation_files, self.validation_directory, network_model_path + ".validation.performance")
         print "#########"
-        print network_model_path + "training.performance"
-        print network_model_path + "validation.performance"
+        print "performance data has been saved to the following locations"
+        print network_model_path + ".training.performance"
+        print network_model_path + ".validation.performance"
         print "#########"
 
     def download_dataset(self):
@@ -255,7 +256,8 @@ class AIA(dataset_models.dataset.Dataset):
         k = filename[3:11] + filename[11:16]
         future = self.y_dict[k]
         current = self._get_prior_y(filename)
-        return future - current
+        delta = future - current
+        return delta
 
     def _get_flux(self, filename):
         """

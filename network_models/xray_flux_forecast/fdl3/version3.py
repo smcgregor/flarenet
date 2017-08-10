@@ -151,7 +151,13 @@ print "initializing data"
 with open("config.yml", "r") as config_file:
     config = yaml.load(config_file)
 
-dataset_model = aia.AIA(config["samples_per_step"], side_channels=["current_goes"], aia_image_count=aia_image_count)
+# Uncomment only the side channel you want to include.
+side_channels = []
+side_channels = ["current_goes"]
+#side_channels = ["hand_tailored"]
+#side_channels = ["true_value"]
+
+dataset_model = aia.AIA(config["samples_per_step"], side_channels=side_channels, aia_image_count=aia_image_count)
 
 #####################################
 #         SPECIFYING DATA           #
@@ -168,8 +174,10 @@ for _ in range(0, aia_image_count):
     image = Input(shape=image_shape)
     input_images.append(image)
     all_inputs.append(image)
-input_side_channel = Input(shape=(dataset_model.get_side_channel_length(),), name="Side_Channel")
-all_inputs.append(input_side_channel)
+side_channel_length = dataset_model.get_side_channel_length()
+if side_channel_length > 0:
+    input_side_channel = Input(shape=(side_channel_length,), name="Side_Channel")
+    all_inputs.append(input_side_channel)
 
 steps_per_epoch = config["steps_per_epoch"]
 samples_per_step = config["samples_per_step"] # batch size
@@ -188,13 +196,15 @@ if len(input_images) > 1:
     x = concatenate(input_images)
 else:
     x = input_images[0]
-#x = Conv2D(128, (8,8), strides=(8,8), padding='same', activation="relu")(x)
 x = Conv2D(1, (1,1), strides=(1,1), padding='same', activation="relu")(x)
 x = MaxPooling2D(pool_size=(1024, 1024), strides=(1,1), padding='valid')(x)
-
 x = Flatten()(x)
 x = Dropout(.5)(x)
-x = concatenate([x, input_side_channel])
+
+# Add the side channel data to the first fully connected layer
+if side_channel_length > 0:
+    x = concatenate([x, input_side_channel])
+
 x = Dense(2, activation="relu")(x)
 #x = Dense(128, activation="relu")(x)
 #x = Dense(32, activation="relu")(x)

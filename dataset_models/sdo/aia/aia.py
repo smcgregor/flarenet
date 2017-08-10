@@ -45,76 +45,7 @@ class AIA(dataset_models.dataset.Dataset):
         self.samples_per_step = samples_per_step  # Batch size
         self.dependent_variable = dependent_variable # Target forecast
 
-        self.side_channels = side_channels
-        self.side_channel_filepath = self.config["aia_path"] + "side_channel/HMI_features_201401_201406_sorted.csv"
-        self.side_channel_dict = {}
-        with open(self.side_channel_filepath, "rb") as f:
-            side_channel_means = [
-                3.70E+31,
-                3.77E+27,
-                1.34E+17,
-                3.70E+31,
-                3.25E+16,
-                2.64E+26,
-                1.24E+07,
-                1.23E+08,
-                5.26E+04,
-                4.11E+05,
-                9.26E+05,
-                1.20E+06,
-                4.12E+06,
-                4.17E+06,
-                1.84E+06,
-                4.57E+30,
-                -4.57E+32,
-                6.37E+02,
-                3.79E+14,
-                -3.92E+07,
-                2.06E+06,
-                -1.52E+06,
-                -6.30E+03,
-                -7.78E+02,
-                6.12E+01,
-            ]
-            side_channel_std_dev = [
-                1.70E+31,
-                2.27E+27,
-                3.69E+16,
-                1.70E+31,
-                9.03E+15,
-                1.59E+26,
-                7.43E+06,
-                7.39E+07,
-                3.16E+04,
-                2.47E+05,
-                5.60E+05,
-                7.23E+05,
-                2.49E+06,
-                2.52E+06,
-                1.11E+06,
-                2.89E+30,
-                3.65E+33,
-                1.44E+03,
-                2.28E+14,
-                2.36E+07,
-                1.20E+06,
-                7.23E+05,
-                3.81E+03,
-                4.75E+02,
-                3.72E+01
-            ]
-            def clean(elem):
-                if math.isinf(elem) or math.isnan(elem):
-                    return 0.0
-                else:
-                    return elem
-            for line in f:
-                split_sc = line.split(",")
-                split_sc[1:] = map(float, split_sc[1:])
-                split_sc[1:] = map(sub, split_sc[1:], side_channel_means)
-                split_sc[1:] = map(div, split_sc[1:], side_channel_std_dev)
-                split_sc[1:] = map(clean, split_sc[1:])
-                self.side_channel_dict[split_sc[0][:8]] = split_sc[1:]
+        self._initialize_side_channels(side_channels)
         self.y_filepath = self.config["aia_path"] + "y/Y_GOES_XRAY_201401_201406_" + lag + "DELAY_" + catch + "MAX.csv"
 
         # Dimensions
@@ -319,6 +250,83 @@ class AIA(dataset_models.dataset.Dataset):
         if "current_goes" in self.side_channels:
             length += 1
         return length
+
+    def _initialize_side_channels(self, side_channels):
+        """
+        Setup the side channels for the network.
+        """
+        self.side_channels = side_channels
+        self.side_channel_filepath = self.config["aia_path"] + "side_channel/HMI_features_201401_201406_sorted.csv"
+        self.side_channel_dict = {}
+        if "hand_tailored" not in self.side_channels:
+            return
+        with open(self.side_channel_filepath, "rb") as f:
+            side_channel_means = [
+                3.70E+31,
+                3.77E+27,
+                1.34E+17,
+                3.70E+31,
+                3.25E+16,
+                2.64E+26,
+                1.24E+07,
+                1.23E+08,
+                5.26E+04,
+                4.11E+05,
+                9.26E+05,
+                1.20E+06,
+                4.12E+06,
+                4.17E+06,
+                1.84E+06,
+                4.57E+30,
+                -4.57E+32,
+                6.37E+02,
+                3.79E+14,
+                -3.92E+07,
+                2.06E+06,
+                -1.52E+06,
+                -6.30E+03,
+                -7.78E+02,
+                6.12E+01,
+            ]
+            side_channel_std_dev = [
+                1.70E+31,
+                2.27E+27,
+                3.69E+16,
+                1.70E+31,
+                9.03E+15,
+                1.59E+26,
+                7.43E+06,
+                7.39E+07,
+                3.16E+04,
+                2.47E+05,
+                5.60E+05,
+                7.23E+05,
+                2.49E+06,
+                2.52E+06,
+                1.11E+06,
+                2.89E+30,
+                3.65E+33,
+                1.44E+03,
+                2.28E+14,
+                2.36E+07,
+                1.20E+06,
+                7.23E+05,
+                3.81E+03,
+                4.75E+02,
+                3.72E+01
+            ]
+            def clean(elem):
+                if math.isinf(elem) or math.isnan(elem):
+                    return 0.0
+                else:
+                    return elem
+            for line in f:
+                split_sc = line.split(",")
+                split_sc[1:] = map(float, split_sc[1:])
+                split_sc[1:] = map(sub, split_sc[1:], side_channel_means)
+                split_sc[1:] = map(div, split_sc[1:], side_channel_std_dev)
+                split_sc[1:] = map(clean, split_sc[1:])
+                self.side_channel_dict[split_sc[0][:8]] = split_sc[1:]
 
     def _finalize_dataset(self, data_x, data_y):
         """

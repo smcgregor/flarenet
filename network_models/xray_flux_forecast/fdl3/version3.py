@@ -168,7 +168,7 @@ for _ in range(0, aia_image_count):
     image = Input(shape=image_shape)
     input_images.append(image)
     all_inputs.append(image)
-input_side_channel = Input(shape=(1,), name="GOES_Flux_Side_Channel") # Current x-ray flux
+input_side_channel = Input(shape=(dataset_model.get_side_channel_length(),), name="Side_Channel")
 all_inputs.append(input_side_channel)
 
 steps_per_epoch = config["steps_per_epoch"]
@@ -184,24 +184,26 @@ print "constructing network in the Keras functional API"
 # Center and scale the input data
 for idx, input_image in enumerate(input_images):
     input_images[idx] = layers.LogWhiten()(input_image)
-x = concatenate(input_images)
-x = Conv2D(12, (1,1), padding='same')(x)
-x = MaxPooling2D(pool_size=(4, 4), strides=2, padding='valid')(x)
-x = Conv2D(32, (4,4), padding='valid')(x)
-x = MaxPooling2D(pool_size=(4, 4), strides=4, padding='valid')(x)
-x = Conv2D(32, (4,4), padding='valid', strides=4)(x)
-x = MaxPooling2D(pool_size=(4, 4), strides=2, padding='valid')(x)
-x = Conv2D(32, (2,2), padding='valid', strides=2)(x)
+if len(input_images) > 1:
+    x = concatenate(input_images)
+else:
+    x = input_images[0]
+#x = Conv2D(128, (8,8), strides=(8,8), padding='same', activation="relu")(x)
+x = Conv2D(1, (1,1), strides=(1,1), padding='same', activation="relu")(x)
+x = MaxPooling2D(pool_size=(1024, 1024), strides=(1,1), padding='valid')(x)
+
 x = Flatten()(x)
 x = Dropout(.5)(x)
 x = concatenate([x, input_side_channel])
-x = Dense(32, activation="relu")(x)
-x = Dense(8, activation="relu")(x)
-x = Dense(4, activation="relu")(x)
+x = Dense(2, activation="relu")(x)
+#x = Dense(128, activation="relu")(x)
+#x = Dense(32, activation="relu")(x)
+#x = Dense(32, activation="relu")(x)
 prediction = Dense(1, activation="linear")(x)
 
-forecaster = Model(inputs=[input_image, input_prior_image, input_side_channel], outputs=[prediction])
-forecaster.compile(optimizer=config["optimizer"], loss=config["loss"])
+forecaster = Model(inputs=all_inputs, outputs=prediction)
+adam = adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0, clipnorm=1.0)
+forecaster.compile(optimizer=adam, loss="mean_squared_error")
 
 # Print the netwrok summary information
 forecaster.summary()

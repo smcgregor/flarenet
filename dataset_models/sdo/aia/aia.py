@@ -209,6 +209,20 @@ class AIA(dataset_models.dataset.Dataset):
                 data_x = []
                 data_y = []
 
+    def examine_weights(self, network_model_path):
+        """
+        Print the weights of the network.
+        """
+        from keras.models import load_model
+        from dataset_models.sdo.aia.layers import LogWhiten
+
+        custom_objects = {"LogWhiten": LogWhiten}
+        model = load_model(network_model_path,
+                           custom_objects=custom_objects)
+        for layer in model.layers:
+            weights = layer.get_weights() # list of numpy arrays
+            print weights
+
     def evaluate_network(self, network_model_path):
         """
         Generate a CSV file with the true and the predicted values for

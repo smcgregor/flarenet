@@ -1,41 +1,86 @@
 # Deep Learning for Solar Modeling
 
-This repository defines an experimental environment for solar deep learning research. The initial problem solved by the repository is x-ray flux prediction, i.e. solar flare prediction. However, many solar modeling problems, including forecasting and understanding solar dynamics, require the same datasets. Our intention is to publish this repository so heliophysicists can build on its foundation to improve the x-ray flux forecasts and explore fundamental questions of heliophysics. We encourage anyone developing on top of this code base to open [pull requests](https://help.github.com/articles/about-pull-requests/) to improve our collective understanding of deep learning heliophysics research. Please note that neural network models can be combined to collectively predict or understand solar phenomena better than our piecewise efforts.
+This repository defines an experimental environment for solar deep
+learning research. The initial problem solved by the repository is
+x-ray flux prediction, i.e. solar flare prediction. However, many
+solar modeling problems, including forecasting and understanding solar
+dynamics, require the same datasets. Our intention is to publish this
+repository so heliophysicists can build on its foundation to improve
+the x-ray flux forecasts and explore fundamental questions of
+heliophysics. We encourage anyone developing on top of this code base
+to open
+[pull requests](https://help.github.com/articles/about-pull-requests/)
+to improve our collective understanding of deep learning heliophysics
+research. Please note that neural network models can be combined to
+collectively predict or understand solar phenomena better than our
+piecewise efforts.
 
-**Citing:** We ask that anyone using this deep learning framework to cite us as the following, TODO (bibtek, etc)
+**Citing:** We ask that anyone using this deep learning framework to
+cite us as the following, TODO (bibtek, etc)
 
 ## Usage ##
 
-This code base serves two purposes simultaneously. First, it has several models for forecasting solar events like solar flares. Second, it provides a set of analysis tools for deep learning models to inform the development of heliophysics research.
+This code base serves two purposes simultaneously. First, it has
+several models for forecasting solar events like solar flares. Second,
+it provides a set of analysis tools for deep learning models to inform
+the development of heliophysics research.
 
 ### Forecasting ###
 
-The forecast models trained within this repository are fore scientific purposes only. Additional efforts to validate the results for operational settings are required.
+The forecast models trained within this repository are fore scientific
+purposes only. Additional efforts to validate the results for
+operational settings are required.
 
 ### Science ###
 
-Neural networks find high-dimensional interactions that may never be apparent to a person manually inspecting the data. There are several tools for extracting interpretable insights from these high dimensional interactions. We incorporate three of these tools into the repository, including,
+Neural networks find high-dimensional interactions that may never be
+apparent to a person manually inspecting the data. There are several
+tools for extracting interpretable insights from these high
+dimensional interactions. We incorporate three of these tools into the
+repository, including,
 
-**Saliency Maps:** [Saliency maps](https://arxiv.org/pdf/1312.6034.pdf) show the region trained neural networks pay attention to (i.e., are the most "salient") as a method for understanding why the network is making a particular forecast. For example,
+**Saliency Maps:**
+  [Saliency maps](https://arxiv.org/pdf/1312.6034.pdf) show the region
+  trained neural networks pay attention to (i.e., are the most
+  "salient") as a method for understanding why the network is making a
+  particular forecast. For example,
 
-> python science/saliency/tsne.py network_models/xray_flux_forecast/fdl1/trained_models/201707261524/best_performing.hdf5 dataset_models/SDO/AIA/fdl_1.py /data/sw/version1/x/20140111_0800_AIA_08_1024_1024.dat
+```bash
+python science/saliency/tsne.py network_models/xray_flux_forecast/fdl1/trained_models/201707261524/best_performing.hdf5 dataset_models/SDO/AIA/fdl_1.py /data/sw/version1/x/20140111_0800_AIA_08_1024_1024.dat
+```
 
-will generate an image highlighting the regions of the sun that are most determinative of the forecast, i.e.
+will generate an image highlighting the regions of the sun that are
+most determinative of the forecast, i.e.
 
 todo
 
 
-**Embeddings:** Generating [embeddings](https://www.tensorflow.org/get_started/embedding_viz) uncovers sun states that the neural networks see as similar. For example, you can look at several images of the sun that the network sees as similar to extract insights regarding what is actually determinative of solar state change. Example:
+**Embeddings:** Generating
+  [embeddings](https://www.tensorflow.org/get_started/embedding_viz)
+  uncovers sun states that the neural networks see as similar. For
+  example, you can look at several images of the sun that the network
+  sees as similar to extract insights regarding what is actually
+  determinative of solar state change. Example:
 
-> python science/embedding/tsne.py network_models/xray_flux_forecast/fdl1/trained_models/201707261524/best_performing.hdf5 dataset_models/SDO/AIA/fdl_1.py
+```bash
+python science/embedding/tsne.py network_models/xray_flux_forecast/fdl1/trained_models/201707261524/best_performing.hdf5 dataset_models/SDO/AIA/fdl_1.py
+```
 
-will generate an embedding that you can explore within the visualization platform TensorBoard, i.e.
+will generate an embedding that you can explore within the
+visualization platform TensorBoard, i.e.
 
 todo
 
-**Deconvolution:** Generating [deconvolutional visualizations](https://arxiv.org/abs/1311.2901) uncovers the structured objects that are important for the network. For example, deconvolving on an image of the current x-ray flux output may show that regions with paired increases in flux output are predictive of changes in the flux output. Example:
+**Deconvolution:** Generating
+  [deconvolutional visualizations](https://arxiv.org/abs/1311.2901)
+  uncovers the structured objects that are important for the
+  network. For example, deconvolving on an image of the current x-ray
+  flux output may show that regions with paired increases in flux
+  output are predictive of changes in the flux output. Example:
 
-> python science/deconvolutional/deconvolutional.py network_models/xray_flux_forecast/fdl1/trained_models/201707261524/best_performing.hdf5 dataset_models/SDO/AIA/fdl_1.py /data/sw/version1/x/20140111_0800_AIA_08_1024_1024.dat
+```bash
+python science/deconvolutional/deconvolutional.py network_models/xray_flux_forecast/fdl1/trained_models/201707261524/best_performing.hdf5 dataset_models/SDO/AIA/fdl_1.py /data/sw/version1/x/20140111_0800_AIA_08_1024_1024.dat
+```
 
 will deconvolve the network to show the following image:
 
@@ -99,11 +144,20 @@ For more details on these technologies, we recommend starting with the glossary 
 
 ## Datasets ##
 
-todo: instructions or scripts for downloading the required datasets. Preferably a script that will download then validate the integrity of the data.
+todo: instructions or scripts for downloading the required
+datasets. Preferably a script that will download then validate the
+integrity of the data.
 
 ## Hardware Requirements ##
 
-Most of these experiments are only efficiently computable with a good GPU. Our hardware details are below, but you could likely run these experiments with less impressive infrastructure. We cannot be certain which elements of our compute stack are critical beyond having a GPU. You can also run these experiments with a CPU, but it will take several orders of magnitude longer to complete. During our initial phase of development we were provided with 16 of these machines by IBM.
+Most of these experiments are only efficiently computable with a good
+GPU. Our hardware details are below, but you could likely run these
+experiments with less impressive infrastructure. We cannot be certain
+which elements of our compute stack are critical beyond having a
+GPU. You can also run these experiments with a CPU, but it will take
+several orders of magnitude longer to complete. During our initial
+phase of development we were provided with 16 of these machines by
+IBM.
 
 <details> 
   <summary>Hardware </summary>
@@ -170,23 +224,32 @@ Requirements:
 * nvidia's compiler and CUDA libraries
 * Anaconda Python installation
 
-Example setup script for a server that already has the core Nvidia software installed.
+Example setup script for a server that already has the core Nvidia
+software installed.
 
-> wget https://repo.continuum.io/archive/Anaconda2-4.4.0-Linux-x86_64.sh; chmod a+x Anaconda2-4.4.0-Linux-x86_64.sh; ./Anaconda2-4.4.0-Linux-x86_64.sh
+```bash
+wget https://repo.continuum.io/archive/Anaconda2-4.4.0-Linux-x86_64.sh; chmod a+x Anaconda2-4.4.0-Linux-x86_64.sh; ./Anaconda2-4.4.0-Linux-x86_64.sh
 
-> conda update --all  
-> conda install astropy pydot graphviz keras  
-> pip install tensorflow tensorflow-gpu feather-format  
+conda update --all
+conda install astropy pydot graphviz keras
+pip install tensorflow tensorflow-gpu feather-format
+```
 
-Once you successully execute this installation, you should then clone this repository and add it to your python path.
+Once you successully execute this installation, you should then clone
+this repository and add it to your python path.
 
-> git clone REPOSITORY_REFERENCE_HERE
-> cd solar-forecast
-> export PYTHONPATH=/PATH/TO/REPOSITORY/solar-forecast:$PYTHONPATH
+```bash
+git clone REPOSITORY_REFERENCE_HERE
+cd solar-forecast
+export PYTHONPATH=/PATH/TO/REPOSITORY/solar-forecast:$PYTHONPATH
+```
 
-You can add the line about exporting to your .bash_profile or .bashrc file so you will not need to type it in on every connection to your server.
+You can add the line about exporting to your .bash_profile or .bashrc
+file so you will not need to type it in on every connection to your
+server.
 
-Please open pull requests to correct this setup script based on your own experiences.
+Please open pull requests to correct this setup script based on your
+own experiences.
 
 todo: provide guide on SMAC installation
 

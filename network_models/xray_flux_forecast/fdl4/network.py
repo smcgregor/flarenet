@@ -157,7 +157,10 @@ side_channels = []
 #side_channels = ["hand_tailored"]
 #side_channels = ["true_value"]
 
-dataset_model = aia.AIA(config["samples_per_step"], side_channels=side_channels, aia_image_count=aia_image_count, dependent_variable="forecast")
+dependent_variable = "forecast"
+# dependent_variable = "flux delta"
+
+dataset_model = aia.AIA(config["samples_per_step"], side_channels=side_channels, aia_image_count=aia_image_count, dependent_variable=dependent_variable)
 
 #####################################
 #         SPECIFYING DATA           #
@@ -247,13 +250,14 @@ if not os.path.exists(model_output_path):
     os.makedirs(model_output_path)
 model_checkpoint = ModelCheckpoint(model_output_path)
 
-history = forecaster.fit_generator(dataset_model.training_generator(),
+history = forecaster.fit_generator(dataset_model.get_training_generator(batch_size=config["samples_per_step"]),
                                    steps_per_epoch,
-                                   max_queue_size=10,
+                                   max_queue_size=128,
                                    epochs=epochs,
                                    validation_data=dataset_model.get_validation_data(),
                                    callbacks=[tensorboard_callbacks, training_callbacks, model_checkpoint],
-                                   workers=1,
+                                   workers=4,
+                                   use_multiprocessing=True,
 )
 
 # Loss on the training set

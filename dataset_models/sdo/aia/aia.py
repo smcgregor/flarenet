@@ -1,11 +1,12 @@
 import os
 import numpy as np
 from datetime import timedelta, datetime
-import random
 import math
 import dataset_models.dataset
 from operator import div, sub
 import feather
+import keras.utils.data_utils
+from dataset_models.sequencer import GeneratorSequence
 
 class AIA(dataset_models.dataset.Dataset):
     """
@@ -53,9 +54,6 @@ class AIA(dataset_models.dataset.Dataset):
         self.input_width = 1024
         self.input_height = 1024
         self.input_channels = 8
-
-        # Standardize the random number generator to consistent shuffles
-        random.seed(0)
 
         # Ensure the dataset is downloaded
         assert(self.is_downloaded())
@@ -106,33 +104,11 @@ class AIA(dataset_models.dataset.Dataset):
             data_y.append(self._get_y(f))
         return self._finalize_dataset(data_x, data_y)
 
-    def training_generator(self):
-        """
-        Generate samples for training by selecting a random subsample of
-        files located in the training directory. The training data will
-        then be collected with the additional timesteps of images
-        and side channel information.
-        """
-        files = self.train_files
-        directory = self.training_directory
-        data_y = []
-        data_x = []
-        i = 0
-        while 1:
-            f = files[i]
-            i += 1
-            sample = self._get_x_data(f, aia_image_count=self.aia_image_count, training=True)
-            self._sample_append(data_x, sample)
-            data_y.append(self._get_y(f))
-
-            if i == len(files):
-                i = 0
-                random.shuffle(files)
-
-            if self.samples_per_step == len(data_x[0]):
-                yield self._finalize_dataset(data_x, data_y)
-                data_x = []
-                data_y = []
+    def get_training_generator(self, batch_size=-1):
+        """Return the sequence generator"""
+        assert batch_size != -1
+        return GeneratorSequence(dataset_model_class=self.klass, batch_size=batch_size, multiprocess=True,
+                 dataset_model_params={side_channels=self.side_channels, aia_image_count=self.aia_image_count, dependent_variable=self.dependent_variable})
 
     def get_network_model(self, network_model_path):
         """Load a network model from file.

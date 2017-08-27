@@ -1,29 +1,20 @@
 # Deep Learning for Solar Modeling
 
 This repository defines an experimental environment for solar deep
-learning research. The initial problem solved by the repository is
-x-ray flux prediction, i.e. solar flare prediction. However, many
-solar modeling problems, including forecasting and understanding solar
-dynamics, require the same datasets. Our intention is to publish this
-repository so heliophysicists can build on its foundation to improve
-the x-ray flux forecasts and explore fundamental questions of
-heliophysics. We encourage anyone developing on top of this code base
-to open
+learning research. The initial problem addressed by the repository is
+x-ray flux forecasting, i.e. solar flare prediction. However, many
+solar modeling problems, including extracting solar dynamics, require
+the same datasets. We published this repository so heliophysicists and
+machine learning researchers can build on a shared foundation of data
+and code to explore fundamental questions of heliophysics. We
+encourage anyone developing on top of this code base to open
 [pull requests](https://help.github.com/articles/about-pull-requests/)
 to improve our collective understanding of deep learning heliophysics
-research. Please note that neural network models can be combined to
-collectively predict or understand solar phenomena better than our
-piecewise efforts.
+research.
 
-**Citing:** We ask that anyone using this deep learning framework to
-cite us as the following, TODO (bibtek, etc)
+## Examples ##
 
-## Usage ##
-
-This code base serves two purposes simultaneously. First, it has
-several models for forecasting solar events like solar flares. Second,
-it provides a set of analysis tools for deep learning models to inform
-the development of heliophysics research.
+todo
 
 ### Forecasting ###
 
@@ -31,7 +22,7 @@ The forecast models trained within this repository are fore scientific
 purposes only. Additional efforts to validate the results for
 operational settings are required.
 
-### Science ###
+### Scientific Feature Extraction ###
 
 Neural networks find high-dimensional interactions that may never be
 apparent to a person manually inspecting the data. There are several

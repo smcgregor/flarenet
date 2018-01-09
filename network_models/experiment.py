@@ -88,6 +88,10 @@ def experiment(network_model, output_path, dataset_model=None, args=None, config
         print("Training will run in a **single** processes. Change your config if this is undesired.")
         training_generator = dataset_model.get_training_generator()
         use_multiprocessing = False
+        if "workers" in config and config["workers"] > 1:
+            print("!!! Multi-threading is not currently supported.")
+            print("Please set the number of workers to 1 or use multi-process")
+            exit()
 
     # Default to getting all the training data unless the
     # `validation_generator` flag is set within the config file

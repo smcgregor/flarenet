@@ -5,8 +5,10 @@ import random
 import math
 import dataset_models.dataset
 from dataset_models.sequencer import GeneratorSequence
-from operator import div, sub
+from operator import truediv as div
+from operator import sub
 import feather
+import scipy.ndimage as sp
 
 class AIA(dataset_models.dataset.Dataset):
     """
@@ -71,12 +73,13 @@ class AIA(dataset_models.dataset.Dataset):
         # Load the y variables into memory
         self.y_dict = {}
         self.y_prior_dict = {}
-        with open(self.y_filepath, "rb") as f:
+        with open(self.y_filepath, "r") as f:
             f.readline()
             for line in f:
                 split_y = line.split(",")
-                cur_y = float(split_y[1])
-                self.y_dict[split_y[0]] = cur_y
+                #cur_y = float(split_y[1])
+                cur_y = float(split_y[3])
+                self.y_dict[split_y[0]] = cur_y*1e6
                 self.y_prior_dict[split_y[0]] = float(split_y[2])
         self._clean_data()
 
@@ -166,7 +169,7 @@ class AIA(dataset_models.dataset.Dataset):
         model = self.get_network_model(network_model_path)
         for layer in model.layers:
             weights = layer.get_weights() # list of numpy arrays
-            print weights
+            print(weights)
 
     def evaluate_network(self, network_model_path):
         """
@@ -200,11 +203,11 @@ class AIA(dataset_models.dataset.Dataset):
 
         save_performance(self.train_files[0::100], network_model_path + ".training.performance", training=True)
         save_performance(self.validation_files, network_model_path + ".validation.performance", training=False)
-        print "#########"
-        print "performance data has been saved to the following locations"
-        print network_model_path + ".training.performance"
-        print network_model_path + ".validation.performance"
-        print "#########"
+        print("#########")
+        print("performance data has been saved to the following locations")
+        print(network_model_path + ".training.performance")
+        print(network_model_path + ".validation.performance")
+        print("#########")
 
     def download_dataset(self):
         """
@@ -345,6 +348,7 @@ class AIA(dataset_models.dataset.Dataset):
         """
         for index in range(0, self.aia_image_count):
             data_x[index] = np.reshape(data_x[index], (len(data_x[index]), self.input_width, self.input_height, self.input_channels)).astype('float32')
+
         assert len(self.side_channels) < 2, "You need to fix this for arbitrary side channel selection"
         if "current_goes" in self.side_channels:
             data_x[-1] = np.reshape(data_x[-1], (len(data_x[-1]), 1)).astype('float32')
@@ -415,9 +419,9 @@ class AIA(dataset_models.dataset.Dataset):
         """
         identifier = self._get_prior_timestep_string(filename, timestep)
         if filename[:5] == "noflr":
-            suffix = "_8chnls_1024_0" + str(12 * timestep) + "m.fthr"
+            suffix = "_8chnls_1024_0" + str(12 * timestep) + "h.fthr"
         else:
-            suffix = "_8chnls_1024_0" + str(60 + 12 * timestep) + "m.fthr"
+            suffix = "_8chnls_1024_0" + str(12 + 12 * timestep) + "h.fthr"
         return filename[0:9] + identifier + suffix
 
     def _get_prior_y(self, filename):
@@ -452,10 +456,11 @@ class AIA(dataset_models.dataset.Dataset):
                     return False
                 return True
             return filter_files
-        self.train_files = filter(filter_closure(True), self.train_files)
-        self.validation_files = filter(filter_closure(False), self.validation_files)
-        print "Training " + str(starting_training_count) + "-> " + str(len(self.train_files))
-        print "Validation " + str(starting_validation_count) + "-> " + str(len(self.validation_files))
+        self.train_files = list(filter(filter_closure(True), self.train_files))
+        self.validation_files = list(filter(filter_closure(False), self.validation_files))
+
+        print("Training " + str(starting_training_count) + "-> " + str(len(self.train_files)))
+        print("Validation " + str(starting_validation_count) + "-> " + str(len(self.validation_files)))
 
     def _get_aia_image(self, filename, directory, previous=0):
         """
@@ -473,12 +478,12 @@ class AIA(dataset_models.dataset.Dataset):
         assert previous >= 0, "previous should be a non-negative integer, it is currently " + previous
         assert previous < 5, "previous should not be a very large integer, it is currently " + previous
         if previous == 0:
-            data = feather.read_dataframe(directory + filename)
-            return data.values
+            data = feather.read_dataframe(directory + filename).values.reshape(1024,1024,8)
+            return data
         else:
             previous_filename = self._get_prior_x_filename(filename, previous)
-            data = feather.read_dataframe(directory + previous_filename)
-            return data.values
+            data = feather.read_dataframe(directory + previous_filename).values.reshape(1024,1024,8)
+            return data
           
     def _get_hand_tailored_side_channel_data(self, filename):
         """
